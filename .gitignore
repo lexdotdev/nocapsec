@@ -2,3 +2,5 @@
 .claude
 specs
 AGENTS.md
+.DS_Store
+bin
