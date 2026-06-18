@@ -1,0 +1,164 @@
+version: "2"
+
+run:
+  timeout: 5m
+  relative-path-mode: gomod
+  tests: true
+  build-tags: []
+
+linters:
+  enable:
+    # Core Go checks
+    - govet
+    - errcheck
+    - staticcheck
+    - ineffassign
+    - unused
+
+    # Bug prevention
+    - bodyclose # unclosed HTTP response bodies — critical for LLM API calls
+    - contextcheck # context.Context propagation — essential for cancellation chains
+    - copyloopvar # loop variable capture (Go 1.22+ aware)
+    - durationcheck # incorrect time.Duration multiplication
+    - errorlint # proper errors.Is/As usage, not direct comparison
+    - exhaustive # missing switch cases on enums
+    - makezero # append to slices initialized with non-zero length
+    - nilerr # returning nil error when err is non-nil
+    - rowserrcheck # unchecked sql.Rows.Err()
+    - sqlclosecheck # unclosed sql.Rows and sql.Stmt
+
+    # Style and maintainability
+    - revive # configurable replacement for golint
+    - gocyclo # cyclomatic complexity
+    - goconst # repeated string literals that should be constants
+    - unconvert # unnecessary type conversions
+    - unparam # unused function parameters
+    - whitespace # unnecessary leading/trailing whitespace in blocks
+    - misspell # typos in comments, strings, and identifiers
+    - predeclared # shadowing of Go predeclared identifiers
+    - nolintlint # enforces //nolint directives have linter names and comments
+    - nilnesserr
+    - bidichk
+    - nakedret
+    - usestdlibvars
+
+    # Security
+    - gosec # common security issues (SQL injection, hardcoded creds, weak crypto)
+
+    # Test quality
+    - testifylint # correct usage of testify assertions
+    - thelper # test helpers missing t.Helper()
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: false
+      exclude-functions:
+        # These are fire-and-forget in SSE streaming — flush errors
+        # indicate a disconnected client, handled by ctx.Done()
+        - (net/http.Flusher).Flush
+
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment # too noisy, micro-optimization not worth the churn
+        - shadow # too noisy, Go's short declarations naturally shadow
+
+    staticcheck:
+      checks:
+        - "all"
+        - "-ST1020" # exported functions/methods don't require doc comments
+        - "-ST1021" # exported types don't require doc comments
+
+    gocyclo:
+      min-complexity: 15
+
+    gosec:
+      excludes:
+        - G104 # covered by errcheck
+      config:
+        global:
+          audit: false
+
+    revive:
+      severity: warning
+      enable-all-rules: false
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: unused-parameter
+        - name: var-declaration
+        - name: var-naming
+
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+
+    unparam:
+      check-exported: false
+
+    exhaustive:
+      default-signifies-exhaustive: true
+
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+
+    misspell:
+      locale: US
+
+    testifylint:
+      enable-all: true
+
+  exclusions:
+    rules:
+      # Test files get relaxed rules
+      - path: _test\.go
+        linters:
+          - gosec # test code doesn't need security hardening
+          - unparam # test helpers often have unused params for interface conformance
+          - goconst # repeated test strings are fine
+          - gocyclo # table-driven tests can be complex
+
+      # Migration files are auto-managed
+      - path: migrations/
+        linters:
+          - goconst
+          - misspell
+
+      # Allow dot imports for testify in tests — idiomatic
+      - path: _test\.go
+        text: "dot-imports"
+        linters:
+          - revive
+
+formatters:
+  enable:
+    - goimports
+    - gofmt
+
+  settings:
+    goimports:
+      local-prefixes:
+        - asta-svc
+    gofmt:
+      simplify: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
