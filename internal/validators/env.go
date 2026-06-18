@@ -1,10 +1,7 @@
-// Package validators orchestrates per-type verification. Each finding type has a
-// validator that runs the finding against live infrastructure (HTTP client,
-// headless browser, OAST) under the mandatory policy gate and returns a verdict.
-//
-// Validators may import the execution packages, policy, evidence, and the leaf
-// packages; they sit above execution in the layering. See
-// specs/domains/validators/README.md.
+// Package validators runs per-type verification. Each finding type has a
+// validator that exercises live infrastructure (HTTP client, browser, OAST)
+// through the mandatory policy gate and returns a verdict. Validators sit above
+// execution in the layering.
 package validators
 
 import (
@@ -21,19 +18,17 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// errNotImplemented is the sentinel returned by stub validators until their
-// proof logic is written.
+// errNotImplemented is returned by stub validators.
 var errNotImplemented = errors.New("validator: not implemented")
 
-// Clock abstracts time so timing-based validators and tests are deterministic.
+// Clock abstracts time so timing validators and tests are deterministic.
 type Clock interface {
 	Now() time.Time
 	Since(time.Time) time.Duration
 }
 
-// PolicyEnforcer is the validator-facing view of the policy gate plus the
-// per-job execution wiring (HTTP client and browser proxy) it hands out. Every
-// URL and redirect a validator touches is checked through this interface.
+// PolicyEnforcer is the validator-facing policy gate plus per-job execution
+// wiring (HTTP client, browser proxy). Every URL and redirect goes through it.
 type PolicyEnforcer interface {
 	CheckURL(raw string, phase policy.Phase) (*policy.SafeURL, error)
 	CheckRedirect(from, to string) error
@@ -41,16 +36,15 @@ type PolicyEnforcer interface {
 	BrowserProxyFor(job Job) (proxyURL string, cleanup func(), err error)
 }
 
-// Job is a single unit of verification work: the normalized finding plus the
-// per-run secrets (nonce, OAST token) the validator injects into mutation slots.
+// Job is one unit of verification work: the normalized finding plus per-run
+// secrets (nonce, OAST token) injected into mutation slots.
 type Job struct {
 	Finding   evidence.Finding
 	Nonce     string
 	OASTToken *oast.OASTToken
 }
 
-// Env is the ambient infrastructure a validator runs against. It is constructed
-// once per worker and shared across jobs.
+// Env is the infrastructure a validator runs against, built once per worker.
 type Env struct {
 	HTTP      *http.Client
 	Browser   browser.BrowserRunner
@@ -60,8 +54,7 @@ type Env struct {
 	Clock     Clock
 }
 
-// Validator verifies a single finding type. Implementations are registered in
-// init and looked up by Type.
+// Validator verifies a single finding type, registered in init, found by Type.
 type Validator interface {
 	Type() string
 	Validate(ctx context.Context, job Job, env Env) (verdict.Verdict, error)

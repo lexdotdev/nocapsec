@@ -1,10 +1,7 @@
-// Package authstate models authentication as a first-class, encrypted object
-// referenced only by auth_state_id. It loads auth state, runs a pre-validation
-// healthcheck, injects credentials into the exact allowed origins for a job,
-// and redacts secrets from every stored artifact.
-//
-// See specs/domains/authstate/README.md and
-// specs/decisions/007-auth-state-first-class.md.
+// Package authstate models auth as a first-class encrypted object referenced
+// only by auth_state_id. It loads auth state, runs a pre-validation
+// healthcheck, injects credentials into a job's allowed origins, and redacts
+// secrets from stored artifacts.
 package authstate
 
 import (
@@ -13,11 +10,10 @@ import (
 	"time"
 )
 
-// ErrNotImplemented is the sentinel returned by unimplemented stubs.
+// ErrNotImplemented is returned by unimplemented stubs.
 var ErrNotImplemented = errors.New("authstate: not implemented")
 
-// Healthcheck describes a pre-validation probe used to confirm a session is
-// still valid before spending a verification run.
+// Healthcheck probes that a session is still valid before a verification run.
 type Healthcheck struct {
 	Method               string
 	URL                  string
@@ -25,9 +21,8 @@ type Healthcheck struct {
 	ExpectedBodyContains string
 }
 
-// AuthState is a first-class authentication object referenced from a finding
-// only by ID. Raw secret material (cookies, tokens, Authorization headers) is
-// stored separately and encrypted, and never appears in this struct.
+// AuthState is referenced from a finding only by ID. Raw secrets (cookies,
+// tokens, Authorization headers) live encrypted elsewhere, never in this struct.
 type AuthState struct {
 	ID             string
 	Kind           string   // e.g. "browser_storage_bundle", "http_cookie_jar"
@@ -45,15 +40,13 @@ type Store interface {
 
 // memStore is a stub in-memory Store.
 //
-// TODO: back this with the encrypted at-rest store keyed on
-// authstate.encryption_key_ref per specs/domains/authstate/README.md and
-// specs/decisions/007-auth-state-first-class.md.
+// TODO: back with the encrypted at-rest store keyed on encryption_key_ref.
 type memStore struct{}
 
 // Get returns the auth state for id.
 //
-// TODO: implement encrypted lookup per specs/domains/authstate/README.md.
-func (memStore) Get(ctx context.Context, id string) (*AuthState, error) {
+// TODO: implement encrypted lookup.
+func (memStore) Get(context.Context, string) (*AuthState, error) {
 	return nil, ErrNotImplemented
 }
 

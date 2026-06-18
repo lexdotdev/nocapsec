@@ -20,11 +20,10 @@ const (
 // capabilities lists every pool the engine starts.
 var capabilities = []Capability{CapHTTPReplay, CapTiming, CapBrowser, CapOAST}
 
-// Task is one unit of capability work bound for a single pool. Target is the
-// host key the per-target limiter uses; Run performs the work.
+// Task is one unit of capability work for a pool. Target is the host key the
+// per-target limiter uses; Run performs the work.
 //
-// TODO: the planner builds Run from the selected validator + Env; see
-// specs/architecture/pipeline.md.
+// TODO: the planner builds Run from the selected validator + Env.
 type Task struct {
 	Capability Capability
 	Target     string
@@ -46,7 +45,7 @@ type pool struct {
 	stop  sync.Once
 }
 
-// newPool starts workers goroutines draining an in-memory queue.
+// newPool starts the worker goroutines draining an in-memory queue.
 func newPool(workers int) *pool {
 	if workers < 1 {
 		workers = 1
@@ -66,7 +65,7 @@ func (p *pool) work() {
 	}
 }
 
-// submit enqueues t and blocks until a worker finishes it or ctx is cancelled.
+// submit enqueues t and blocks until a worker finishes it or ctx is canceled.
 func (p *pool) submit(ctx context.Context, t Task) error {
 	done := make(chan error, 1) // buffered so the worker never blocks reporting
 	select {
@@ -88,8 +87,8 @@ func (p *pool) close() {
 	p.wg.Wait()
 }
 
-// runTask runs t.Run, converting a panic into an error so a fault in one job
-// fails only that job — never the process or the other pools.
+// runTask runs t.Run, turning a panic into an error so one job's fault never
+// takes down the process or other pools.
 func runTask(ctx context.Context, t Task) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

@@ -1,10 +1,7 @@
 // Package oast allocates out-of-band callback tokens and polls for the
 // DNS/HTTP/HTTPS/SMTP interactions that prove blind vulnerabilities. The
-// concrete backend (Interactsh for the MVP) is hidden behind the OAST
-// interface so proof rules depend only on protocol-neutral models.
-//
-// TODO: see specs/domains/oast/README.md and
-// specs/decisions/005-interactsh-oast-backend.md.
+// concrete backend (Interactsh) hides behind the OAST interface so proof rules
+// depend only on protocol-neutral models.
 package oast
 
 import (

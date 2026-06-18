@@ -5,8 +5,7 @@ import (
 	"net/http"
 )
 
-// server adapts an Engine to the verifier HTTP API; see
-// specs/contracts/verifier-api.md.
+// server adapts an Engine to the verifier HTTP API.
 type server struct {
 	engine *Engine
 }
@@ -26,8 +25,7 @@ func (s *server) handler() http.Handler {
 
 // postVerify accepts evidence, validates it, and dispatches the job.
 //
-// TODO: validate the body, attach policy, dispatch, return {job_id, accepted};
-// see specs/contracts/verifier-api.md.
+// TODO: validate the body, attach policy, dispatch, return {job_id, accepted}.
 func (s *server) postVerify(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "POST /verify")
 }
@@ -44,7 +42,7 @@ func (s *server) getVerify(w http.ResponseWriter, r *http.Request) {
 
 // getArtifacts returns artifact references for a job.
 //
-// TODO: back with the artifact store; see specs/contracts/verifier-api.md.
+// TODO: back with the artifact store.
 func (s *server) getArtifacts(w http.ResponseWriter, _ *http.Request) {
 	notImplemented(w, "GET /verify/{id}/artifacts")
 }

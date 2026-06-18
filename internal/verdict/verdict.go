@@ -1,7 +1,5 @@
 // Package verdict defines the closed set of verification outcomes and the
 // reproducible report that accompanies each one.
-//
-// See specs/domains/verdict/README.md and specs/architecture/pipeline.md.
 package verdict
 
 import (

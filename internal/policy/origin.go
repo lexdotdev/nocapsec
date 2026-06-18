@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// defaultPort returns the default port for a known scheme. The boolean reports
-// whether the scheme is recognized.
+// defaultPort returns the default port for a known scheme.
 func defaultPort(scheme string) (int, bool) {
 	switch scheme {
 	case "http":
@@ -19,12 +18,9 @@ func defaultPort(scheme string) (int, bool) {
 	}
 }
 
-// OriginFromURL derives a normalized Origin from a parsed URL. The scheme is
-// lower-cased, the host is taken verbatim from u.Hostname() (callers are
-// expected to have normalized it already), and the port is filled with the
-// scheme default when the URL omits it. The boolean is false when the scheme is
-// unknown or the host is empty, in which case origin comparison would be
-// ambiguous.
+// OriginFromURL derives a normalized Origin from a parsed URL: lower-cased
+// scheme, host verbatim from u.Hostname() (caller pre-normalizes), and the
+// scheme default port when omitted. False when scheme is unknown or host empty.
 func OriginFromURL(u *url.URL) (Origin, bool) {
 	if u == nil {
 		return Origin{}, false
@@ -52,10 +48,8 @@ func OriginFromURL(u *url.URL) (Origin, bool) {
 	return Origin{Scheme: scheme, Host: host, Port: port}, true
 }
 
-// ParseOrigin parses a raw origin string (e.g. "https://app.example.com" or
-// "http://host:8080") into a normalized Origin. It applies the same default-port
-// filling as OriginFromURL. The boolean is false when the input cannot be parsed
-// into a complete origin.
+// ParseOrigin parses a raw origin string (e.g. "https://app.example.com") into
+// a normalized Origin, with the same default-port filling as OriginFromURL.
 func ParseOrigin(raw string) (Origin, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -65,14 +59,13 @@ func ParseOrigin(raw string) (Origin, bool) {
 	if err != nil {
 		return Origin{}, false
 	}
-	// A bare "host:port" parses with an empty scheme; require an explicit scheme
-	// so the default port is unambiguous.
+	// Require an explicit scheme so the default port is unambiguous; a bare
+	// "host:port" parses with an empty scheme.
 	if u.Scheme == "" || u.Host == "" {
 		return Origin{}, false
 	}
-	// Normalize the host the same way the canonicalizer does (lower-case, strip a
-	// single trailing dot) so ParseOrigin agrees with CheckURL. Capture the port
-	// before rewriting u.Host, since u.Port() reads from u.Host.
+	// Normalize the host like CheckURL does so origins agree. Capture the port
+	// first, since u.Port() reads from u.Host.
 	host := strings.ToLower(u.Hostname())
 	host = strings.TrimSuffix(host, ".")
 	port := u.Port()

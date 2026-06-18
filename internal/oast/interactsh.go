@@ -5,13 +5,10 @@ import (
 	"time"
 )
 
-// interactshClient is the Interactsh-backed OAST implementation. Interactsh
-// concepts (registration, polling secrets, AES payloads, dynamic HTTP
-// responses) stay confined to this file and never leak into proof rules.
+// interactshClient is the Interactsh-backed OAST. Interactsh specifics
+// (registration, polling secrets, AES payloads) stay confined to this file.
 //
-// TODO: implement against a self-hosted interactsh-server; see
-// specs/domains/oast/README.md and
-// specs/decisions/005-interactsh-oast-backend.md.
+// TODO: implement against a self-hosted interactsh-server.
 type interactshClient struct {
 	serverURL string
 	domain    string
@@ -23,19 +20,17 @@ func NewInteractshClient(serverURL, domain string) OAST {
 	return &interactshClient{serverURL: serverURL, domain: domain}
 }
 
-func (c *interactshClient) NewInteraction(ctx context.Context, purpose string) (*OASTToken, error) {
-	// TODO: register a correlation ID with interactsh-server and return the
-	// allocated token; see specs/decisions/005-interactsh-oast-backend.md.
+func (c *interactshClient) NewInteraction(context.Context, string) (*OASTToken, error) {
+	// TODO: register a correlation ID and return the allocated token.
 	return nil, ErrNotImplemented
 }
 
-func (c *interactshClient) Poll(ctx context.Context, tokenID string, since time.Time) ([]Interaction, error) {
-	// TODO: poll interactsh-server, decrypt payloads, and map them to
-	// protocol-neutral Interaction records; see specs/domains/oast/README.md.
+func (c *interactshClient) Poll(context.Context, string, time.Time) ([]Interaction, error) {
+	// TODO: poll, decrypt payloads, map to protocol-neutral Interactions.
 	return nil, ErrNotImplemented
 }
 
-func (c *interactshClient) Close(ctx context.Context, tokenID string) error {
+func (c *interactshClient) Close(context.Context, string) error {
 	// TODO: deregister the correlation ID with interactsh-server.
 	return ErrNotImplemented
 }

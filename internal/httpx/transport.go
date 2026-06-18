@@ -6,13 +6,11 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/policy"
 )
 
-// NewClient builds an *http.Client whose transport enforces the supplied
-// policy.Checker: connections are pinned to allowed, resolved IPs and every
-// redirect hop is re-checked against the policy.
+// NewClient builds an *http.Client whose transport enforces c: connections are
+// pinned to resolved, allowed IPs and every redirect hop is re-checked.
 //
-// TODO: wire a pinned DialContext from c that resolves via c's Resolver,
-// enforces c.CheckURL/c.CheckRedirect per hop, and records RedirectHop entries.
-// See specs/domains/httpx/README.md.
+// TODO: wire a pinned DialContext that resolves via c's Resolver, enforces
+// CheckURL/CheckRedirect per hop, and records RedirectHop entries.
 func NewClient(c *policy.Checker) *http.Client {
 	_ = c
 	return &http.Client{}

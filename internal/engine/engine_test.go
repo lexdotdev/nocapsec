@@ -14,7 +14,7 @@ import (
 
 func TestDispatchRunsTaskOnItsPool(t *testing.T) {
 	d := newDispatcher(DefaultLimits())
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	ran := false
 	err := d.Dispatch(context.Background(), Task{
@@ -32,7 +32,7 @@ func TestDispatchRunsTaskOnItsPool(t *testing.T) {
 
 func TestDispatchUnknownCapability(t *testing.T) {
 	d := newDispatcher(DefaultLimits())
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	err := d.Dispatch(context.Background(), Task{
 		Capability: "nope",
@@ -48,7 +48,7 @@ func TestDispatchUnknownCapability(t *testing.T) {
 // ErrNotImplemented rather than running nothing silently.
 func TestDispatchNilRunIsNotImplemented(t *testing.T) {
 	d := newDispatcher(DefaultLimits())
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	err := d.Dispatch(context.Background(), Task{Capability: CapOAST, Target: "t"})
 	if !errors.Is(err, ErrNotImplemented) {
@@ -60,7 +60,7 @@ func TestDispatchNilRunIsNotImplemented(t *testing.T) {
 // only two jobs for one target run at once; the rest block on the semaphore.
 func TestDispatchEnforcesPerTargetLimit(t *testing.T) {
 	d := newDispatcher(Limits{Browser: 2})
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	entered := make(chan struct{}, 4)
 	release := make(chan struct{})
@@ -96,7 +96,7 @@ func TestDispatchEnforcesPerTargetLimit(t *testing.T) {
 // A panic in one task fails only that job; the worker keeps serving the pool.
 func TestPoolRecoversFromPanic(t *testing.T) {
 	d := newDispatcher(Limits{HTTPReplay: 1})
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	err := d.Dispatch(context.Background(), Task{
 		Capability: CapHTTPReplay,
@@ -123,7 +123,7 @@ func TestPoolRecoversFromPanic(t *testing.T) {
 
 func TestDispatchHonorsContextCancellation(t *testing.T) {
 	d := newDispatcher(DefaultLimits())
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -151,14 +151,13 @@ func TestJobStorePutGet(t *testing.T) {
 	}
 }
 
-// The HTTP surface matches specs/contracts/verifier-api.md: an unknown job is
-// 404, and the not-yet-wired routes return 501.
+// Unknown job is 404; the not-yet-wired routes return 501.
 func TestHandlerRoutes(t *testing.T) {
 	e, err := New(Config{})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer e.Close()
+	defer func() { _ = e.Close() }()
 
 	srv := httptest.NewServer(e.Handler())
 	defer srv.Close()
@@ -180,7 +179,7 @@ func TestHandlerRoutes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("%s %s: %v", c.method, c.path, err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != c.want {
 			t.Errorf("%s %s: status = %d, want %d", c.method, c.path, resp.StatusCode, c.want)
 		}
@@ -192,7 +191,7 @@ func TestEngineVerifyNotImplemented(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer e.Close()
+	defer func() { _ = e.Close() }()
 
 	if _, err := e.Verify(context.Background(), []byte(`{}`)); !errors.Is(err, ErrNotImplemented) {
 		t.Fatalf("Verify err = %v, want ErrNotImplemented", err)

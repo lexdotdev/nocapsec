@@ -12,9 +12,9 @@ import (
 	"github.com/lexdotdev/nocapsec/pkg/nocapsec"
 )
 
-// addr is the listen address for the verifier API in serve mode.
+// addr is the verifier API listen address in serve mode.
 //
-// TODO: make configurable; see specs/contracts/verifier-api.md.
+// TODO: make configurable.
 const addr = ":8080"
 
 func main() {
@@ -46,10 +46,10 @@ func serve() {
 	if err != nil {
 		log.Fatalf("nocapsec serve: %v", err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 
 	log.Printf("nocapsec serve: listening on %s (stub: all routes return 501)", addr)
-	log.Fatal(http.ListenAndServe(addr, eng.Handler()))
+	log.Fatal(http.ListenAndServe(addr, eng.Handler())) //nolint:gosec // G114: serve timeouts added in hardening phase
 }
 
 // verify runs the full pipeline for one finding in-process, then exits.
@@ -59,7 +59,7 @@ func verify(args []string) {
 		os.Exit(2)
 	}
 
-	finding, err := os.ReadFile(args[0])
+	finding, err := os.ReadFile(args[0]) //nolint:gosec // G703: CLI intentionally reads the user-supplied finding path
 	if err != nil {
 		log.Fatalf("nocapsec verify: %v", err)
 	}
@@ -68,7 +68,7 @@ func verify(args []string) {
 	if err != nil {
 		log.Fatalf("nocapsec verify: %v", err)
 	}
-	defer eng.Close()
+	defer func() { _ = eng.Close() }()
 
 	report, err := eng.Verify(context.Background(), finding)
 	if err != nil {

@@ -1,10 +1,6 @@
-// Package evidence parses an untrusted, client-authored finding into a
-// canonical, validated form that the rest of the pipeline operates on.
-//
-// It is the only package that turns prose/JSON into a typed Finding. It imports
-// only the standard library (and internal/verdict); it never imports execution
-// packages. See specs/domains/evidence/README.md and
-// specs/contracts/evidence-contract.md.
+// Package evidence parses an untrusted client finding into a canonical,
+// validated Finding. It is the trust boundary's front door: prose-only or
+// malformed input is rejected here before anything executes. Stdlib only.
 package evidence
 
 import (
@@ -12,8 +8,7 @@ import (
 	"errors"
 )
 
-// ErrInvalid indicates malformed or insufficient evidence; it maps to the
-// Invalid verdict. Wrap it with a stable reason for reporting.
+// ErrInvalid marks malformed or insufficient evidence (Invalid verdict).
 var ErrInvalid = errors.New("evidence: invalid finding")
 
 // Header is a single request/response header.
@@ -22,13 +17,13 @@ type Header struct {
 	Value string `json:"value"`
 }
 
-// Request is an exact request supplied by the finding. It is replayed verbatim
-// except for values filled into declared mutation slots.
+// Request is an exact request, replayed verbatim except for mutation slots.
+// Body is the raw wire body (a JSON string), not base64.
 type Request struct {
 	Method  string   `json:"method"`
 	URL     string   `json:"url"`
 	Headers []Header `json:"headers,omitempty"`
-	Body    []byte   `json:"body,omitempty"`
+	Body    string   `json:"body,omitempty"`
 }
 
 // Target carries the scope, expected origin, and allowlists that bound a finding.
@@ -47,9 +42,8 @@ type AuthRef struct {
 	Role        string `json:"role,omitempty"`
 }
 
-// MutationSlots names the only positions the verifier may write into. The key is
-// a logical slot name (e.g. "oast_url", "nonce"); the value is the location
-// (parameter name, JSON pointer, body field, etc.).
+// MutationSlots maps a slot name (e.g. "nonce") to the only position the
+// verifier may write (param name, JSON pointer, body field).
 type MutationSlots map[string]string
 
 // SideEffects declares whether a finding changes state and how to clean up.
@@ -58,8 +52,7 @@ type SideEffects struct {
 	Cleanup       []Request `json:"cleanup,omitempty"`
 }
 
-// Finding is the normalized, validated form of a client finding. It is the
-// single object the rest of the pipeline operates on.
+// Finding is the normalized, validated finding the pipeline operates on.
 type Finding struct {
 	FindingID   string          `json:"finding_id"`
 	Type        string          `json:"type"`

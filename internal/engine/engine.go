@@ -1,6 +1,5 @@
-// Package engine is the in-process orchestration core: it accepts a finding,
-// runs the verification pipeline, dispatches capability work to bounded
-// per-capability worker pools, and tracks jobs.
+// Package engine is the in-process orchestration core: it runs the verification
+// pipeline, dispatches work to bounded per-capability pools, and tracks jobs.
 package engine
 
 import (
@@ -11,11 +10,11 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// ErrNotImplemented is the sentinel returned by scaffold paths not yet wired.
+// ErrNotImplemented is returned by scaffold paths not yet wired.
 var ErrNotImplemented = errors.New("engine: not implemented")
 
-// Limits caps concurrent jobs per capability per target.
-// A zero field takes the default; a negative field means unlimited.
+// Limits caps concurrent jobs per capability per target. Zero takes the
+// default; negative means unlimited.
 type Limits struct {
 	HTTPReplay int
 	Timing     int
@@ -43,17 +42,15 @@ func DefaultLimits() Limits {
 	return Limits{HTTPReplay: 5, Timing: 1, Browser: 2, OAST: 8}
 }
 
-// Config holds the engine's execution tuning. Policy defaults, the OAST backend,
-// and the artifact store join it as the pipeline is wired.
+// Config holds the engine's execution tuning. Policy, OAST, and artifact
+// wiring join it as the pipeline is built out.
 //
-// TODO: add Env wiring (validators.Env / PolicyEnforcer); see
-// specs/contracts/library-api.md and specs/contracts/validator-env.md.
+// TODO: add Env wiring (validators.Env / PolicyEnforcer).
 type Config struct {
 	Limits Limits
 }
 
-// withDefaults fills unset (zero) limit fields so timing never falls back to
-// unlimited by accident.
+// withDefaults fills unset limits so timing never falls back to unlimited.
 func (c Config) withDefaults() Config {
 	d := DefaultLimits()
 	if c.Limits.HTTPReplay == 0 {
@@ -71,19 +68,16 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Engine accepts findings and runs the verification pipeline on bounded
-// in-process worker pools. Safe for concurrent use.
+// Engine runs the verification pipeline on bounded pools. Safe for concurrent use.
 type Engine struct {
 	dispatcher Dispatcher
 	jobs       *jobStore
-	// TODO: hold the Env, validator registry, planner, and evaluator that turn
-	// a finding into dispatched Tasks; see specs/architecture/pipeline.md.
+	// TODO: hold the Env, validator registry, planner, and evaluator.
 }
 
 // New wires the dispatcher, worker pools, and job store from cfg.
 //
-// TODO: build the Env and PolicyEnforcer here (composition root); see
-// specs/contracts/library-api.md.
+// TODO: build the Env and PolicyEnforcer here (composition root).
 func New(cfg Config) (*Engine, error) {
 	cfg = cfg.withDefaults()
 	return &Engine{
@@ -94,9 +88,8 @@ func New(cfg Config) (*Engine, error) {
 
 // Verify runs the full pipeline for one finding and returns its terminal Report.
 //
-// TODO: drive normalizer -> policy gate -> planner -> dispatcher -> evaluator;
-// see specs/architecture/pipeline.md.
-func (e *Engine) Verify(ctx context.Context, finding []byte) (verdict.Report, error) {
+// TODO: drive normalizer -> policy gate -> planner -> dispatcher -> evaluator.
+func (e *Engine) Verify(_ context.Context, _ []byte) (verdict.Report, error) {
 	return verdict.Report{}, ErrNotImplemented
 }
 

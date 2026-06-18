@@ -1,12 +1,8 @@
-// Package policy is the standalone, mandatory security gate. Every URL and every
-// outbound request — from the HTTP client, the browser proxy, and every worker —
-// is checked here. Comparison is structural (canonicalized origins, label-anchored
-// host matching), never string-based; DNS is resolved and pinned per request and
-// every redirect hop is re-checked.
+// Package policy is the mandatory security gate for every outbound URL.
 //
-// This package imports only the standard library and golang.org/x/net/idna. It
-// never imports execution packages. See specs/domains/policy/README.md,
-// specs/contracts/policy-enforcer.md, and specs/decisions/006-strict-url-policy-package.md.
+// Comparison is structural (canonical origins, label-anchored host match),
+// never string-based; DNS is resolved and pinned, every redirect re-checked.
+// Imports only the stdlib and x/net/idna.
 package policy
 
 import (
@@ -16,8 +12,7 @@ import (
 	"net/url"
 )
 
-// Phase distinguishes where a URL is being checked, so browser-phase checks can
-// additionally consult the committed navigation.
+// Phase is where a URL check happens (browser nav consults committed state).
 type Phase int
 
 const (
@@ -39,7 +34,7 @@ func (p Phase) String() string {
 	}
 }
 
-// Reason codes for a rejection. They are stable and surfaced in reports.
+// Stable rejection reason codes, surfaced in reports.
 const (
 	ReasonControlChar     = "control_char"
 	ReasonUnparseable     = "unparseable"
@@ -54,8 +49,7 @@ const (
 	ReasonTooManyRedirect = "too_many_redirects"
 )
 
-// RejectionError is returned when a URL or redirect violates policy. The Reason
-// is one of the stable Reason* codes; the gate maps it to the Rejected verdict.
+// RejectionError reports a policy violation; Reason is a stable Reason* code.
 type RejectionError struct {
 	Reason string
 	Raw    string
@@ -71,13 +65,12 @@ func (e *RejectionError) Error() string {
 
 func (e *RejectionError) Unwrap() error { return e.Err }
 
-// reject builds a RejectionError. Used throughout the package.
 func reject(reason, raw string, err error) *RejectionError {
 	return &RejectionError{Reason: reason, Raw: raw, Err: err}
 }
 
-// Origin is a normalized (scheme, host, port) triple. Ports are always explicit
-// so equality is total.
+// Origin is a normalized (scheme, host, port) triple; the port is always
+// explicit so equality is total.
 type Origin struct {
 	Scheme string
 	Host   string
@@ -89,12 +82,11 @@ func (o Origin) Equal(other Origin) bool {
 	return o.Scheme == other.Scheme && o.Host == other.Host && o.Port == other.Port
 }
 
-// String renders the origin as scheme://host:port.
 func (o Origin) String() string {
 	return fmt.Sprintf("%s://%s:%d", o.Scheme, o.Host, o.Port)
 }
 
-// URLPolicy is the per-target configuration that bounds what a finding may reach.
+// URLPolicy bounds what a finding may reach, per target.
 type URLPolicy struct {
 	AllowedSchemes      []string
 	AllowedHosts        []string
@@ -115,29 +107,27 @@ type URLPolicy struct {
 	BlockCloudMetadata bool
 	ResolveCNAMEChain  bool
 
-	// InternalAssessment, when true, permits otherwise-blocked ranges (the target
-	// policy has explicitly opted into an internal assessment).
+	// InternalAssessment opts into otherwise-blocked ranges.
 	InternalAssessment bool
 }
 
-// SafeURL is a URL that passed policy; it carries the pinned IP set the dialer
-// must connect to.
+// SafeURL passed policy; it carries the pinned IPs the dialer may connect to.
 type SafeURL struct {
 	URL      *url.URL
 	Origin   Origin
 	PinnedIP []net.IP
 }
 
-// Resolver resolves a host to a set of IPs. It is injectable so tests do not hit
-// the network. The default implementation wraps net.Resolver (see dns.go).
+// Resolver maps a host to IPs. Injectable so tests skip the network.
 type Resolver interface {
 	Resolve(ctx context.Context, host string) ([]net.IP, error)
 }
 
-// Checker enforces a URLPolicy. It is the concrete implementation behind the
-// URL-checking half of the PolicyEnforcer contract. Method bodies live in
-// url.go, origin.go, iprange.go, dns.go, and redirect.go.
+// Checker enforces a URLPolicy.
 type Checker struct {
 	Policy   URLPolicy
 	Resolver Resolver
+
+	// redirects counts hops in the current chain; reset by ResetRedirects.
+	redirects int
 }
