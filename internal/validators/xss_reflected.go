@@ -32,6 +32,12 @@ func (xssReflected) Validate(ctx context.Context, job Job, env Env) (Result, err
 	if !ok {
 		return Result{Verdict: verdict.Invalid}, nil
 	}
+	if env.Browser == nil {
+		return Result{Verdict: verdict.Inconclusive}, nil
+	}
+
+	// Inject the per-run nonce so the reflected payload carries it.
+	ev.Entrypoint.URL = strings.ReplaceAll(ev.Entrypoint.URL, "{{nonce}}", job.Nonce)
 
 	// Reject disallowed initial-navigation schemes.
 	entryURL := ev.Entrypoint.URL

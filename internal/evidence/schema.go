@@ -97,7 +97,7 @@ var typeSchemas = map[string]typeSchema{
 
 	"xss.blind": {
 		evidence: objSchema{strict: true, fields: []field{
-			req("injection_request", fRequest),
+			req("request", fRequest),
 			req("mutation_slots", fObject),
 			opt("payload_marker", fString),
 		}},
@@ -106,7 +106,7 @@ var typeSchemas = map[string]typeSchema{
 			req("expected_path_contains", fString),
 			opt("poll_window_seconds", fNumber),
 		}},
-		requests: []string{"injection_request"},
+		requests: []string{"request"},
 	},
 
 	"open_redirect": {

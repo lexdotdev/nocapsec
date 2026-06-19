@@ -36,6 +36,12 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 	if !ok {
 		return Result{Verdict: verdict.Invalid}, nil
 	}
+	if env.Browser == nil {
+		return Result{Verdict: verdict.Inconclusive}, nil
+	}
+
+	// Inject the per-run nonce so the final URL carries it.
+	ev.Entrypoint.URL = strings.ReplaceAll(ev.Entrypoint.URL, "{{nonce}}", job.Nonce)
 
 	if rejectScheme(ev.Entrypoint.URL) {
 		return Result{Verdict: verdict.Rejected}, nil

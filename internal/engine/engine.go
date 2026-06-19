@@ -14,7 +14,9 @@ import (
 
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
 	"github.com/lexdotdev/nocapsec/internal/authstate"
+	"github.com/lexdotdev/nocapsec/internal/browser"
 	"github.com/lexdotdev/nocapsec/internal/evidence"
+	"github.com/lexdotdev/nocapsec/internal/oast"
 	"github.com/lexdotdev/nocapsec/internal/policy"
 	"github.com/lexdotdev/nocapsec/internal/validators"
 	"github.com/lexdotdev/nocapsec/internal/verdict"
@@ -57,6 +59,10 @@ type Config struct {
 	Resolver  policy.Resolver
 	Store     artifacts.ArtifactStore
 	AuthStore authstate.Store
+	// Browser runs client-side proof attempts; nil disables browser validators.
+	Browser browser.BrowserRunner
+	// OAST allocates/polls out-of-band callbacks; nil disables OAST validators.
+	OAST oast.OAST
 	// InternalAssessment opts into otherwise-blocked IP ranges.
 	InternalAssessment bool
 	// Logger receives structured events; nil disables logging.
@@ -96,6 +102,8 @@ type Engine struct {
 	resolver           policy.Resolver
 	store              artifacts.ArtifactStore
 	authStore          authstate.Store
+	browser            browser.BrowserRunner
+	oast               oast.OAST
 	clock              validators.Clock
 	logger             Logger
 	metrics            *Metrics
@@ -112,6 +120,8 @@ func New(cfg Config) (*Engine, error) {
 		resolver:           cfg.Resolver,
 		store:              cfg.Store,
 		authStore:          cfg.AuthStore,
+		browser:            cfg.Browser,
+		oast:               cfg.OAST,
 		clock:              validators.WallClock{},
 		logger:             cfg.Logger,
 		metrics:            NewMetrics(),
@@ -225,7 +235,14 @@ func (e *Engine) planAndDispatch(ctx context.Context, finding *evidence.Finding,
 	}
 
 	job := validators.Job{Finding: *finding, Nonce: nonce}
-	env := validators.Env{Policy: pe, Artifacts: e.store, AuthStore: e.authStore, Clock: e.clock}
+	env := validators.Env{
+		Policy:    pe,
+		Artifacts: e.store,
+		AuthStore: e.authStore,
+		Browser:   e.browser,
+		OAST:      e.oast,
+		Clock:     e.clock,
+	}
 
 	var vResult validators.Result
 	var vErr error

@@ -109,6 +109,16 @@ func TestParseAcceptsValidFindings(t *testing.T) {
   "proof": {"expected_signal": "oast_interaction", "poll_window_seconds": 30}
 }`,
 
+		"xss.blind (request + mutation slot)": `{
+  "finding_id": "xb-1", "type": "xss.blind",
+  "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},
+  "evidence": {
+    "request": {"method": "POST", "url": "https://app.example.com/contact", "body": "message=placeholder"},
+    "mutation_slots": {"oast_url": "message"}
+  },
+  "proof": {"expected_signal": "oast_http", "expected_path_contains": "/c", "poll_window_seconds": 900}
+}`,
+
 		"idor.read (two roles)": `{
   "finding_id": "id-1", "type": "idor.read",
   "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},

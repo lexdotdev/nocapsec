@@ -12,11 +12,15 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
 )
 
-const defaultTimeoutMS = 10000
+const (
+	defaultTimeoutMS = 10000
+	settleDelay      = 750 * time.Millisecond
+)
 
 // runner drives Chromium via CDP to execute a BrowserJob.
 type runner struct {
 	proxyURL string
+	execPath string
 	store    artifacts.ArtifactStore
 }
 
@@ -26,6 +30,11 @@ type RunnerOption func(*runner)
 // WithProxyURL routes browser egress through the policy CONNECT proxy.
 func WithProxyURL(u string) RunnerOption {
 	return func(r *runner) { r.proxyURL = u }
+}
+
+// WithExecPath pins the browser binary (e.g. macOS Chrome, not on PATH).
+func WithExecPath(p string) RunnerOption {
+	return func(r *runner) { r.execPath = p }
 }
 
 // WithArtifactStore enables proof-time screenshot/DOM capture.
@@ -50,7 +59,7 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
-	taskCtx, cleanup, err := ephemeralContext(ctx, r.proxyURL)
+	taskCtx, cleanup, err := ephemeralContext(ctx, r.proxyURL, r.execPath)
 	if err != nil {
 		return BrowserResult{}, fmt.Errorf("browser: ephemeral context: %w", err)
 	}
@@ -73,6 +82,10 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 			return BrowserResult{}, fmt.Errorf("browser: post-load action %q: %w", act.Kind, err)
 		}
 	}
+
+	// Let client-side redirects and async dialog/console events settle before
+	// snapshotting; otherwise we capture the page mid-flight.
+	_ = chromedp.Run(taskCtx, chromedp.Sleep(settleDelay)) // best-effort settle
 
 	navs, dialogs, console, netEvts := ec.snapshot()
 
