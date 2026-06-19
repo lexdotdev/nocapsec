@@ -1,61 +1,78 @@
-// Package artifacts persists the raw evidence behind every verdict — evidence,
-// request/response pairs, redirect chains, browser events, screenshots, DOM
-// snapshots, OAST interactions, and timing samples — with secrets redacted.
+// Package artifacts persists the raw evidence behind every verdict with
+// secrets redacted. Every artifact is addressable by a stable ref.
 package artifacts
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"sync"
 )
 
-// ErrNotImplemented is the sentinel returned by stub implementations.
-var ErrNotImplemented = errors.New("artifacts: not implemented")
+// ErrNotFound is returned when an artifact ref does not exist.
+var ErrNotFound = errors.New("artifacts: not found")
 
 // ArtifactKind categorizes a persisted artifact; values are stable refs.
 type ArtifactKind string
 
-// Artifact kinds. String values must remain stable once persisted.
 const (
-	KindEvidence       ArtifactKind = "evidence"         // normalized finding
-	KindPolicySnapshot ArtifactKind = "policy"           // target policy at decision time
-	KindHTTPExchange   ArtifactKind = "http_exchange"    // request/response pair
-	KindRedirectChain  ArtifactKind = "redirect_chain"   // redirect hops
-	KindBrowserEvents  ArtifactKind = "browser_events"   // browser navigation events
-	KindConsoleDialog  ArtifactKind = "console_dialog"   // console and dialog records
-	KindScreenshot     ArtifactKind = "screenshot"       // rendered screenshot
-	KindDOMSnapshot    ArtifactKind = "dom_snapshot"     // serialized DOM
-	KindOASTRaw        ArtifactKind = "oast_interaction" // raw OAST interaction
-	KindTimingSamples  ArtifactKind = "timing_samples"   // timing measurements
-	KindVerdict        ArtifactKind = "verdict"          // decided verdict report
+	KindEvidence       ArtifactKind = "evidence"
+	KindPolicySnapshot ArtifactKind = "policy"
+	KindHTTPExchange   ArtifactKind = "http_exchange"
+	KindRedirectChain  ArtifactKind = "redirect_chain"
+	KindBrowserEvents  ArtifactKind = "browser_events"
+	KindConsoleDialog  ArtifactKind = "console_dialog"
+	KindScreenshot     ArtifactKind = "screenshot"
+	KindDOMSnapshot    ArtifactKind = "dom_snapshot"
+	KindOASTRaw        ArtifactKind = "oast_interaction"
+	KindTimingSamples  ArtifactKind = "timing_samples"
+	KindVerdict        ArtifactKind = "verdict"
 )
 
-// ArtifactStore writes and reads artifacts, each addressable by a stable ref
-// recorded in the verdict report.
+// ArtifactStore writes and reads artifacts, each addressable by a stable ref.
 type ArtifactStore interface {
-	// Put persists data for a job under kind and returns a stable ref. Callers
-	// route data through Sanitize first so raw credentials never reach storage.
 	Put(ctx context.Context, jobID string, kind ArtifactKind, data []byte) (ref string, err error)
-	// Get retrieves the artifact addressed by ref.
 	Get(ctx context.Context, ref string) ([]byte, error)
 }
 
-// memStore is a stub ArtifactStore.
-//
-// TODO: implement persistence (object store + Postgres metadata, immutable,
-// redaction-fronted writes).
-type memStore struct{}
+// memStore implements in-memory ArtifactStore with auto-sanitization.
+type memStore struct {
+	mu    sync.RWMutex
+	blobs map[string][]byte // ref -> data
+}
 
-// NewStore returns a stub ArtifactStore.
+// NewStore returns an in-memory ArtifactStore.
 func NewStore() ArtifactStore {
-	return &memStore{}
+	return &memStore{blobs: map[string][]byte{}}
 }
 
-// Put is a stub; it returns ErrNotImplemented.
-func (s *memStore) Put(context.Context, string, ArtifactKind, []byte) (string, error) {
-	return "", ErrNotImplemented
+// Put sanitizes data, computes a content-addressed ref, and stores it.
+func (s *memStore) Put(_ context.Context, jobID string, kind ArtifactKind, data []byte) (string, error) {
+	clean := Sanitize(data)
+	ref := buildRef(jobID, kind, clean)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.blobs[ref] = clean
+	return ref, nil
 }
 
-// Get is a stub; it returns ErrNotImplemented.
-func (s *memStore) Get(context.Context, string) ([]byte, error) {
-	return nil, ErrNotImplemented
+// Get retrieves the artifact addressed by ref.
+func (s *memStore) Get(_ context.Context, ref string) ([]byte, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	data, ok := s.blobs[ref]
+	if !ok {
+		return nil, ErrNotFound
+	}
+	out := make([]byte, len(data))
+	copy(out, data)
+	return out, nil
+}
+
+// buildRef produces a stable artifact:// ref from job, kind, and content hash.
+func buildRef(jobID string, kind ArtifactKind, data []byte) string {
+	h := sha256.Sum256(data)
+	return fmt.Sprintf("artifact://%s/%s/%s", jobID, kind, hex.EncodeToString(h[:8]))
 }
