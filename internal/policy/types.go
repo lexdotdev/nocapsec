@@ -34,6 +34,11 @@ func (p Phase) String() string {
 	}
 }
 
+const (
+	schemeHTTP  = "http"
+	schemeHTTPS = "https"
+)
+
 // Stable rejection reason codes, surfaced in reports.
 const (
 	ReasonControlChar     = "control_char"

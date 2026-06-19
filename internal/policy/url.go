@@ -52,7 +52,7 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 	// 3. Lower-case scheme; require http/https.
 	scheme := strings.ToLower(u.Scheme)
 	u.Scheme = scheme
-	if scheme != "http" && scheme != "https" {
+	if scheme != schemeHTTP && scheme != schemeHTTPS {
 		return nil, reject(ReasonBadScheme, raw, nil)
 	}
 	if !c.schemeAllowed(scheme) {

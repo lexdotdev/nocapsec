@@ -6,21 +6,7 @@ import (
 	"strings"
 )
 
-// defaultPort returns the default port for a known scheme.
-func defaultPort(scheme string) (int, bool) {
-	switch scheme {
-	case "http":
-		return 80, true
-	case "https":
-		return 443, true
-	default:
-		return 0, false
-	}
-}
-
-// OriginFromURL derives a normalized Origin from a parsed URL: lower-cased
-// scheme, host verbatim from u.Hostname() (caller pre-normalizes), and the
-// scheme default port when omitted. False when scheme is unknown or host empty.
+// OriginFromURL derives a normalized Origin from a parsed URL.
 func OriginFromURL(u *url.URL) (Origin, bool) {
 	if u == nil {
 		return Origin{}, false
@@ -31,8 +17,13 @@ func OriginFromURL(u *url.URL) (Origin, bool) {
 		return Origin{}, false
 	}
 
-	def, known := defaultPort(scheme)
-	if !known {
+	var def int
+	switch scheme {
+	case schemeHTTP:
+		def = 80
+	case schemeHTTPS:
+		def = 443
+	default:
 		return Origin{}, false
 	}
 

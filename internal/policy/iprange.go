@@ -80,7 +80,7 @@ func ClassifyIP(ip net.IP) (blocked bool, reason string) {
 	ip = canonicalForClassify(ip)
 
 	switch {
-	case isCloudMetadata(ip): // most specific, check first
+	case ip.Equal(cloudMetadataV4) || (cloudMetadataV6 != nil && ip.Equal(cloudMetadataV6)):
 		return true, ipReasonCloudMeta
 	case ip.IsUnspecified():
 		return true, ipReasonUnspecified
@@ -111,11 +111,6 @@ func canonicalForClassify(ip net.IP) net.IP {
 		return v4
 	}
 	return ip
-}
-
-// isCloudMetadata reports whether ip is a cloud IMDS endpoint.
-func isCloudMetadata(ip net.IP) bool {
-	return ip.Equal(cloudMetadataV4) || (cloudMetadataV6 != nil && ip.Equal(cloudMetadataV6))
 }
 
 // ipBlockedByPolicy reports whether ip is blocked, honoring the per-range
