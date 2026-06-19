@@ -36,8 +36,8 @@ type objSchema struct {
 type typeSchema struct {
 	evidence      objSchema
 	proof         objSchema
-	requests      []string // single request objects, e.g. "requests.control"
-	requestArrays []string // arrays of request objects, e.g. "setup"
+	requests      []string
+	requestArrays []string
 }
 
 // req/opt build fields tersely.

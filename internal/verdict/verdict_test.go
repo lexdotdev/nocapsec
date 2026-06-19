@@ -30,7 +30,7 @@ func TestReasonedCarriesReason(t *testing.T) {
 }
 
 func TestProvenAttachesProofAndPolicy(t *testing.T) {
-	proof, err := Proof(map[string]string{"signal": "marker", "message": "VERIFIER_CANARY"})
+	proof, err := json.Marshal(map[string]string{"signal": "marker", "message": "VERIFIER_CANARY"})
 	if err != nil {
 		t.Fatalf("Proof: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestStampSetsDecidedAt(t *testing.T) {
 // A terminal report omits the proof, target_origin, artifacts, and reason keys
 // when empty so reports stay boring and diffable.
 func TestReportJSONOmitsEmpty(t *testing.T) {
-	b, err := Unproven("f5", "x", "", PolicySummary{}).JSON()
+	b, err := json.Marshal(Unproven("f5", "x", "", PolicySummary{}))
 	if err != nil {
 		t.Fatalf("JSON: %v", err)
 	}

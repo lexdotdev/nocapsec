@@ -136,6 +136,16 @@ func rewriteRequestArray(m map[string]json.RawMessage, path string) error {
 	return nil
 }
 
+// ExtractRequests returns all requests from a parsed finding for external use
+// (policy checking, URL extraction).
+func ExtractRequests(f *Finding) []Request {
+	ts, ok := typeSchemas[f.Type]
+	if !ok {
+		return nil
+	}
+	return evidenceRequests(f, ts)
+}
+
 // evidenceRequests gathers every request the finding declares, so slot
 // locations can be checked against real positions.
 func evidenceRequests(f *Finding, ts typeSchema) []Request {

@@ -240,56 +240,45 @@ func validateMutationSlots(f *Finding, ts typeSchema) error {
 }
 
 // slotResolves reports whether loc names a real position in some request.
-// Forms: "query:<param>", "header:<name>", "body:<token>", a JSON pointer
-// "/a/b" into a body, or a bare token appearing verbatim in a URL or body.
 func slotResolves(loc string, reqs []Request) bool {
 	switch {
 	case loc == "":
 		return false
 	case strings.HasPrefix(loc, "query:"):
-		return anyQueryParam(reqs, loc[len("query:"):])
+		param := loc[len("query:"):]
+		for _, r := range reqs {
+			u, err := url.Parse(r.URL)
+			if err != nil {
+				continue
+			}
+			if _, ok := u.Query()[param]; ok {
+				return true
+			}
+		}
+		return false
 	case strings.HasPrefix(loc, "header:"):
-		return anyHeader(reqs, loc[len("header:"):])
+		name := loc[len("header:"):]
+		for _, r := range reqs {
+			for _, h := range r.Headers {
+				if strings.EqualFold(h.Name, name) {
+					return true
+				}
+			}
+		}
+		return false
 	case strings.HasPrefix(loc, "body:"):
-		return anyBodyContains(reqs, loc[len("body:"):])
+		token := loc[len("body:"):]
+		for _, r := range reqs {
+			if strings.Contains(r.Body, token) {
+				return true
+			}
+		}
+		return false
 	case strings.HasPrefix(loc, "/"):
 		return anyPointer(reqs, loc)
 	default:
 		return anyContains(reqs, loc)
 	}
-}
-
-func anyQueryParam(reqs []Request, param string) bool {
-	for _, r := range reqs {
-		u, err := url.Parse(r.URL)
-		if err != nil {
-			continue
-		}
-		if _, ok := u.Query()[param]; ok {
-			return true
-		}
-	}
-	return false
-}
-
-func anyHeader(reqs []Request, name string) bool {
-	for _, r := range reqs {
-		for _, h := range r.Headers {
-			if strings.EqualFold(h.Name, name) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func anyBodyContains(reqs []Request, token string) bool {
-	for _, r := range reqs {
-		if strings.Contains(r.Body, token) {
-			return true
-		}
-	}
-	return false
 }
 
 // anyContains matches a bare token (or its {{token}} form) in a URL or body.
@@ -349,7 +338,6 @@ func pointerResolves(doc any, pointer string) bool {
 	return true
 }
 
-// requireNonEmptyString checks raw is a non-empty JSON string.
 func requireNonEmptyString(raw json.RawMessage, where string) error {
 	var s string
 	if err := json.Unmarshal(raw, &s); err != nil {
