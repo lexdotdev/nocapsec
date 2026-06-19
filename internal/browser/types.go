@@ -6,13 +6,9 @@ package browser
 
 import (
 	"context"
-	"errors"
 
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 )
-
-// ErrNotImplemented is returned by stub runner methods.
-var ErrNotImplemented = errors.New("browser: not implemented")
 
 // Action is one declared post-load step (click, wait). Bounded, not a script.
 type Action struct {
