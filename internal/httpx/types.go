@@ -5,13 +5,8 @@
 package httpx
 
 import (
-	"errors"
-
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 )
-
-// ErrNotImplemented is returned by stubbed functions.
-var ErrNotImplemented = errors.New("httpx: not implemented")
 
 // RedirectHop records a single redirect step and the policy verdict for it.
 type RedirectHop struct {
