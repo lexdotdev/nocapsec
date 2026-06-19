@@ -6,12 +6,8 @@ package oast
 
 import (
 	"context"
-	"errors"
 	"time"
 )
-
-// ErrNotImplemented is the sentinel returned by stub implementations.
-var ErrNotImplemented = errors.New("oast: not implemented")
 
 // OASTToken is what a validator inserts into a declared mutation slot. It is
 // backend-neutral; Interactsh-specific concepts never appear here.
@@ -43,10 +39,8 @@ type Interaction struct {
 // OAST allocates unique callback tokens, polls for matching interactions, and
 // releases tokens once their poll window closes.
 type OAST interface {
-	// NewInteraction allocates a unique token bound to a single purpose.
 	NewInteraction(ctx context.Context, purpose string) (*OASTToken, error)
-	// Poll returns interactions for tokenID observed at or after since.
 	Poll(ctx context.Context, tokenID string, since time.Time) ([]Interaction, error)
-	// Close releases/expires the token; expired tokens never satisfy a proof.
+	// Close expires the token.
 	Close(ctx context.Context, tokenID string) error
 }
