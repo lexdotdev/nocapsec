@@ -91,26 +91,3 @@ func TestPrecedence_FlagOverridesEnv(t *testing.T) {
 		t.Fatalf("flag should override env, got %q", c.ListenAddr)
 	}
 }
-
-func TestLookupTarget(t *testing.T) {
-	c := Config{
-		Targets: TargetConfigs{
-			"acme-prod": {
-				ScopeID:        "acme-prod",
-				AllowedSchemes: []string{"https"},
-				AllowedHosts:   []string{"app.acme.com"},
-			},
-		},
-	}
-	tc, ok := c.LookupTarget("acme-prod")
-	if !ok {
-		t.Fatal("target not found")
-	}
-	if tc.AllowedHosts[0] != "app.acme.com" {
-		t.Fatalf("host = %q", tc.AllowedHosts[0])
-	}
-	_, ok = c.LookupTarget("missing")
-	if ok {
-		t.Fatal("missing target found")
-	}
-}

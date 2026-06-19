@@ -50,7 +50,7 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
-	taskCtx, _, cleanup, err := ephemeralContext(ctx, r.proxyURL)
+	taskCtx, cleanup, err := ephemeralContext(ctx, r.proxyURL)
 	if err != nil {
 		return BrowserResult{}, fmt.Errorf("browser: ephemeral context: %w", err)
 	}

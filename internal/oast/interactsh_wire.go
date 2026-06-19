@@ -34,20 +34,7 @@ type interactshInteraction struct {
 
 // normalizeProtocol lowercases a wire protocol name.
 func normalizeProtocol(raw string) string {
-	switch strings.ToLower(raw) {
-	case "dns":
-		return "dns"
-	case "http":
-		return "http"
-	case "https":
-		return "https"
-	case "smtp":
-		return "smtp"
-	case "ldap":
-		return "ldap"
-	default:
-		return strings.ToLower(raw)
-	}
+	return strings.ToLower(raw)
 }
 
 // extractUserAgent parses the User-Agent header from an interaction.

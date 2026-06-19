@@ -10,10 +10,10 @@ import (
 // ephemeralContext creates a chromedp allocator with an ephemeral user-data-dir
 // that is destroyed when cleanup is called. proxyURL routes all browser egress
 // through the policy CONNECT proxy.
-func ephemeralContext(parent context.Context, proxyURL string) (ctx context.Context, cancel context.CancelFunc, cleanup func(), err error) {
+func ephemeralContext(parent context.Context, proxyURL string) (ctx context.Context, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "nocapsec-browser-*")
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 
 	opts := append(
@@ -38,14 +38,11 @@ func ephemeralContext(parent context.Context, proxyURL string) (ctx context.Cont
 	allocCtx, allocCancel := chromedp.NewExecAllocator(parent, opts...)
 	taskCtx, taskCancel := chromedp.NewContext(allocCtx)
 
-	cancelAll := func() {
+	cleanup = func() {
 		taskCancel()
 		allocCancel()
-	}
-	destroyProfile := func() {
-		cancelAll()
 		os.RemoveAll(dir) //nolint:errcheck // best-effort cleanup of temp dir
 	}
 
-	return taskCtx, cancelAll, destroyProfile, nil
+	return taskCtx, cleanup, nil
 }

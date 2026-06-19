@@ -7,7 +7,6 @@ package validators
 import (
 	"context"
 	"encoding/json"
-	"net/http"
 	"time"
 
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
@@ -25,28 +24,25 @@ type Clock interface {
 	Since(time.Time) time.Duration
 }
 
-// PolicyEnforcer is the validator-facing policy gate plus per-job execution
-// wiring (HTTP client, browser proxy). Every URL and redirect goes through it.
+// PolicyEnforcer is the validator-facing policy gate plus per-job browser-proxy
+// wiring. Every URL and redirect goes through it.
 type PolicyEnforcer interface {
 	CheckURL(raw string, phase policy.Phase) (*policy.SafeURL, error)
 	CheckRedirect(from, to string) error
-	HTTPClientFor(job Job) (*http.Client, error)
 	BrowserProxyFor(job Job) (proxyURL string, cleanup func(), err error)
 	// Checker returns the underlying policy checker for httpx bundles.
 	Checker() *policy.Checker
 }
 
-// Job is one unit of verification work: the normalized finding plus per-run
-// secrets (nonce, OAST token) injected into mutation slots.
+// Job is one unit of verification work: the normalized finding plus the per-run
+// nonce injected into mutation slots.
 type Job struct {
-	Finding   evidence.Finding
-	Nonce     string
-	OASTToken *oast.OASTToken
+	Finding evidence.Finding
+	Nonce   string
 }
 
 // Env is the infrastructure a validator runs against, built once per worker.
 type Env struct {
-	HTTP       *http.Client
 	Browser    browser.BrowserRunner
 	OAST       oast.OAST
 	Policy     PolicyEnforcer

@@ -86,7 +86,8 @@ func ssrfPollAndAttribute(
 	ctx context.Context, env Env, job Job,
 	ev ssrfOASTEvidence, proof ssrfOASTProof, tok *oast.OASTToken,
 ) Result {
-	pollCfg := ssrfPollConfig(env, proof)
+	window := time.Duration(proof.PollWindowSeconds) * time.Second
+	pollCfg := oastPollConfig(env, window, 120*time.Second)
 	clock := env.Clock
 	if clock == nil {
 		clock = WallClock{}
@@ -117,25 +118,6 @@ func ssrfPollAndAttribute(
 	}
 
 	return Result{Verdict: verdict.Verified, Proof: proofJSON(attributedOASTProof(qualified[0]))}
-}
-
-func ssrfPollConfig(env Env, proof ssrfOASTProof) oast.PollConfig {
-	window := time.Duration(proof.PollWindowSeconds) * time.Second
-	if window <= 0 {
-		window = 120 * time.Second
-	}
-	if env.PollConfig != nil {
-		cfg := *env.PollConfig
-		cfg.Window = window
-		return cfg
-	}
-	return oast.PollConfig{
-		Window:      window,
-		InitialWait: 2 * time.Second,
-		MinInterval: 2 * time.Second,
-		MaxInterval: 15 * time.Second,
-		Multiplier:  1.5,
-	}
 }
 
 type ssrfOASTEvidence struct {

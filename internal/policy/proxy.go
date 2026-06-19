@@ -87,7 +87,7 @@ func (p *ConnectProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	var upstream net.Conn
 	for _, ip := range safe.PinnedIP {
 		dialAddr := net.JoinHostPort(ip.String(), port)
-		upstream, err = net.DialTimeout("tcp", dialAddr, p.dialTimeout()) //nolint:gosec // dialAddr is from policy-pinned IPs
+		upstream, err = net.DialTimeout("tcp", dialAddr, 10*time.Second) //nolint:gosec // dialAddr is from policy-pinned IPs
 		if err == nil {
 			break
 		}
@@ -115,11 +115,6 @@ func (p *ConnectProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	_ = buf.Flush()
 
 	relay(client, upstream)
-}
-
-// dialTimeout is the per-connection timeout for upstream connects.
-func (p *ConnectProxy) dialTimeout() time.Duration {
-	return 10 * time.Second
 }
 
 // relay copies bytes bidirectionally between a and b.

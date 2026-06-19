@@ -11,16 +11,14 @@ import (
 
 // Config holds all engine-level settings.
 type Config struct {
-	ListenAddr string        `json:"listen_addr"`
-	Pools      PoolSizes     `json:"pools"`
-	Targets    TargetConfigs `json:"targets"`
-	Serve      ServeConfig   `json:"serve"`
-	OAST       OASTConfig    `json:"oast"`
+	ListenAddr string      `json:"listen_addr"`
+	Pools      PoolSizes   `json:"pools"`
+	Serve      ServeConfig `json:"serve"`
 	// InternalAssessment opts into otherwise-blocked IP ranges.
 	InternalAssessment bool `json:"internal_assessment"`
 }
 
-// PoolSizes caps the number of workers per capability pool.
+// PoolSizes caps workers per capability pool.
 type PoolSizes struct {
 	HTTPReplay int `json:"http_replay"`
 	Timing     int `json:"timing"`
@@ -28,39 +26,12 @@ type PoolSizes struct {
 	OAST       int `json:"oast"`
 }
 
-// TargetConcurrency caps per-target concurrency per capability.
-type TargetConcurrency struct {
-	HTTPReplay int `json:"http_replay"`
-	Timing     int `json:"timing"`
-	Browser    int `json:"browser"`
-	OAST       int `json:"oast"`
-}
-
-// TargetConfig resolves per-target policy and concurrency from scope_id.
-type TargetConfig struct {
-	ScopeID            string            `json:"scope_id"`
-	AllowedSchemes     []string          `json:"allowed_schemes"`
-	AllowedHosts       []string          `json:"allowed_hosts"`
-	AllowedPorts       []int             `json:"allowed_ports"`
-	InternalAssessment bool              `json:"internal_assessment"`
-	Concurrency        TargetConcurrency `json:"concurrency"`
-}
-
-// TargetConfigs indexes target configurations by scope_id.
-type TargetConfigs map[string]TargetConfig
-
 // ServeConfig holds HTTP server timeouts.
 type ServeConfig struct {
 	ReadHeaderTimeout time.Duration `json:"read_header_timeout"`
 	ReadTimeout       time.Duration `json:"read_timeout"`
 	WriteTimeout      time.Duration `json:"write_timeout"`
 	IdleTimeout       time.Duration `json:"idle_timeout"`
-}
-
-// OASTConfig holds OAST backend settings.
-type OASTConfig struct {
-	ServerURL         string `json:"server_url"`
-	PollWindowSeconds int    `json:"poll_window_seconds"`
 }
 
 // Defaults returns a Config with safe defaults.
@@ -179,13 +150,4 @@ func (c Config) withDefaults() Config {
 		c.Serve.IdleTimeout = d.Serve.IdleTimeout
 	}
 	return c
-}
-
-// LookupTarget returns the TargetConfig for a scope_id, or zero value.
-func (c Config) LookupTarget(scopeID string) (TargetConfig, bool) {
-	if c.Targets == nil {
-		return TargetConfig{}, false
-	}
-	tc, ok := c.Targets[scopeID]
-	return tc, ok
 }

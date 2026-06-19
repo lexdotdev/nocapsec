@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"math/rand/v2"
-	"sort"
+	"slices"
 
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 	"github.com/lexdotdev/nocapsec/internal/httpx"
@@ -244,7 +244,7 @@ func medianDuration(samples []timingSample) int64 {
 	for i, s := range samples {
 		ds[i] = s.durationMS
 	}
-	sort.Slice(ds, func(i, j int) bool { return ds[i] < ds[j] })
+	slices.Sort(ds)
 	return ds[len(ds)/2]
 }
 

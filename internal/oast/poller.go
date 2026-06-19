@@ -25,28 +25,6 @@ type PollConfig struct {
 	Multiplier  float64       // backoff growth factor
 }
 
-// DefaultPollConfig for standard OAST tokens (non-blind-XSS).
-func DefaultPollConfig() PollConfig {
-	return PollConfig{
-		Window:      120 * time.Second,
-		InitialWait: 5 * time.Second,
-		MinInterval: 3 * time.Second,
-		MaxInterval: 15 * time.Second,
-		Multiplier:  1.5,
-	}
-}
-
-// BlindXSSPollConfig uses a wider window for delayed payloads.
-func BlindXSSPollConfig() PollConfig {
-	return PollConfig{
-		Window:      900 * time.Second,
-		InitialWait: 10 * time.Second,
-		MinInterval: 10 * time.Second,
-		MaxInterval: 60 * time.Second,
-		Multiplier:  2.0,
-	}
-}
-
 // PollResult is what the poller returns to the caller.
 type PollResult struct {
 	Interactions []Interaction

@@ -67,10 +67,6 @@ func (e *testPolicyEnforcer) CheckRedirect(from, to string) error {
 	return e.checker.CheckRedirect(from, to)
 }
 
-func (e *testPolicyEnforcer) HTTPClientFor(_ validators.Job) (*http.Client, error) {
-	return &http.Client{}, nil
-}
-
 func (e *testPolicyEnforcer) BrowserProxyFor(_ validators.Job) (string, func(), error) {
 	return "", nil, nil
 }

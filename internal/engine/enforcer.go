@@ -2,9 +2,7 @@ package engine
 
 import (
 	"context"
-	"net/http"
 
-	"github.com/lexdotdev/nocapsec/internal/httpx"
 	"github.com/lexdotdev/nocapsec/internal/policy"
 	"github.com/lexdotdev/nocapsec/internal/validators"
 )
@@ -26,12 +24,6 @@ func (e *enforcer) CheckURL(raw string, phase policy.Phase) (*policy.SafeURL, er
 
 func (e *enforcer) CheckRedirect(from, to string) error {
 	return e.checker.CheckRedirect(from, to)
-}
-
-// HTTPClientFor returns a policy-pinned HTTP client for the job.
-func (e *enforcer) HTTPClientFor(_ validators.Job) (*http.Client, error) {
-	bundle := httpx.NewClient(e.checker)
-	return bundle.Client, nil
 }
 
 // BrowserProxyFor starts a local CONNECT proxy enforcing policy on every

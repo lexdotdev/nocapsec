@@ -99,10 +99,8 @@ type URLPolicy struct {
 	AllowedPorts        []int
 	ExpectedOrigin      string
 
-	AllowRedirects     bool
-	MaxRedirects       int
-	AllowExternalFinal bool
-	ExternalFinalHosts []string
+	AllowRedirects bool
+	MaxRedirects   int
 
 	BlockPrivateIPs    bool
 	BlockLoopback      bool
@@ -110,7 +108,6 @@ type URLPolicy struct {
 	BlockMulticast     bool
 	BlockUnspecified   bool
 	BlockCloudMetadata bool
-	ResolveCNAMEChain  bool
 
 	// InternalAssessment opts into otherwise-blocked ranges.
 	InternalAssessment bool

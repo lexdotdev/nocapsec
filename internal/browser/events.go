@@ -22,7 +22,7 @@ type eventCollector struct {
 
 // attach registers CDP event listeners on the chromedp context.
 func (ec *eventCollector) attach(ctx context.Context) {
-	chromedp.ListenTarget(ctx, func(ev interface{}) {
+	chromedp.ListenTarget(ctx, func(ev any) {
 		switch e := ev.(type) {
 		case *page.EventJavascriptDialogOpening:
 			ec.recordDialog(e)
