@@ -2,16 +2,21 @@ package validators
 
 import (
 	"context"
-
-	"github.com/lexdotdev/nocapsec/internal/verdict"
+	"time"
 )
 
 type xssBlind struct{}
 
-func (xssBlind) Type() string { return "xss.blind" }
+func (xssBlind) Type() string    { return "xss.blind" }
+func (xssBlind) Cap() Capability { return CapOAST }
 
-func (xssBlind) Validate(context.Context, Job, Env) (verdict.Verdict, error) {
-	return verdict.Inconclusive, errNotImplemented
+func (xssBlind) Validate(ctx context.Context, job Job, env Env) (Result, error) {
+	return runOASTValidator(ctx, job, env, oastOpts{
+		Purpose:            "blind_xss",
+		SlotKey:            "oast_url",
+		RequireAttribution: false,
+		DefaultWindow:      900 * time.Second,
+	})
 }
 
 func init() { Register(xssBlind{}) }

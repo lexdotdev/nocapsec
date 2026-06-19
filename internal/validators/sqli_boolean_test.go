@@ -1,0 +1,275 @@
+package validators_test
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strconv"
+	"testing"
+
+	"github.com/lexdotdev/nocapsec/internal/artifacts"
+	"github.com/lexdotdev/nocapsec/internal/evidence"
+	"github.com/lexdotdev/nocapsec/internal/validators"
+	"github.com/lexdotdev/nocapsec/internal/verdict"
+)
+
+func buildBooleanJob(t *testing.T, port int) validators.Job {
+	t.Helper()
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"requests": map[string]any{
+			"baseline":        map[string]string{"method": "GET", "url": base + "/item?id=1"},
+			"true_condition":  map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=1"},
+			"false_condition": map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=0"},
+		},
+		"vulnerable_parameter": "id",
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_true_similarity_to_baseline": true,
+		"expected_false_difference":            true,
+		"compare":                              []string{"status", "body_hash_fuzzy", "content_length_bucket"},
+		"repetitions":                          2,
+	})
+	return validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-sqli-bool",
+			Type:      "sqli.boolean_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "testnonce",
+	}
+}
+
+func booleanEnv(t *testing.T, srv *httptest.Server) validators.Env {
+	t.Helper()
+	return validators.Env{
+		Policy:    testEnforcer(t, srv),
+		Artifacts: artifacts.NewStore(),
+		Clock:     validators.WallClock{},
+	}
+}
+
+// Handler simulating a boolean SQLi: true condition returns same as baseline,
+// false condition returns a different page.
+func booleanSQLiHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		switch id {
+		case "1", "1 AND 1=1":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<html><title>Product</title><p>Widget A - $19.99</p></html>`))
+		case "1 AND 1=0":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<html><title>No Results</title><p>No products found.</p></html>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+}
+
+func TestSQLiBooleanVerified(t *testing.T) {
+	srv := httptest.NewServer(booleanSQLiHandler())
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	v, ok := validators.Lookup("sqli.boolean_based")
+	if !ok {
+		t.Fatal("validator not registered")
+	}
+
+	job := buildBooleanJob(t, port)
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	result := res.Verdict
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", result)
+	}
+}
+
+// All three responses are the same -> true resembles baseline but false does
+// too, so not_reproduced.
+func TestSQLiBooleanNotReproduced(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><title>Product</title><p>Widget A</p></html>`))
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	v, _ := validators.Lookup("sqli.boolean_based")
+	job := buildBooleanJob(t, port)
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	result := res.Verdict
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result != verdict.NotReproduced {
+		t.Fatalf("verdict = %q, want not_reproduced", result)
+	}
+}
+
+// True condition differs from baseline -> not_reproduced (violates condition 1).
+func TestSQLiBooleanTrueDiffersFromBaseline(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		// Every request returns something different.
+		switch id {
+		case "1":
+			_, _ = w.Write([]byte("baseline page"))
+		case "1 AND 1=1":
+			_, _ = w.Write([]byte("true page differs"))
+		case "1 AND 1=0":
+			_, _ = w.Write([]byte("false page"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	v, _ := validators.Lookup("sqli.boolean_based")
+	job := buildBooleanJob(t, port)
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	result := res.Verdict
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result != verdict.NotReproduced {
+		t.Fatalf("verdict = %q, want not_reproduced (true differs from baseline)", result)
+	}
+}
+
+// Status code difference between baseline and false condition -> verified.
+func TestSQLiBooleanStatusCodeDiff(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		switch id {
+		case "1", "1 AND 1=1":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte("ok"))
+		case "1 AND 1=0":
+			w.WriteHeader(http.StatusInternalServerError)
+			_, _ = w.Write([]byte("error"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	ev, _ := json.Marshal(map[string]any{
+		"requests": map[string]any{
+			"baseline":        map[string]string{"method": "GET", "url": base + "/item?id=1"},
+			"true_condition":  map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=1"},
+			"false_condition": map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=0"},
+		},
+		"vulnerable_parameter": "id",
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_true_similarity_to_baseline": true,
+		"expected_false_difference":            true,
+		"compare":                              []string{"status"},
+		"repetitions":                          2,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-status-diff",
+			Type:      "sqli.boolean_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.boolean_based")
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	result := res.Verdict
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", result)
+	}
+}
+
+// Bad evidence JSON -> invalid.
+func TestSQLiBooleanInvalidEvidence(t *testing.T) {
+	v, _ := validators.Lookup("sqli.boolean_based")
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-invalid",
+			Type:      "sqli.boolean_based",
+			Evidence:  json.RawMessage(`{"not": "valid"}`),
+			Proof:     json.RawMessage(`{}`),
+		},
+	}
+	env := validators.Env{Clock: validators.WallClock{}}
+
+	res, err := v.Validate(context.Background(), job, env)
+	result := res.Verdict
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result != verdict.Invalid {
+		t.Fatalf("verdict = %q, want invalid", result)
+	}
+}
+
+// Dynamic content (UUIDs/timestamps) masked -> still verified.
+func TestSQLiBooleanDynamicContentMasked(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		id := r.URL.Query().Get("id")
+		switch id {
+		case "1", "1 AND 1=1":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<p>Product A</p><span>req-550e8400-e29b-41d4-a716-446655440000</span>`))
+		case "1 AND 1=0":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<p>No results</p><span>req-6ba7b810-9dad-11d1-80b4-00c04fd430c8</span>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	v, _ := validators.Lookup("sqli.boolean_based")
+	job := buildBooleanJob(t, port)
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	result := res.Verdict
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if result != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified (dynamic tokens masked)", result)
+	}
+}
