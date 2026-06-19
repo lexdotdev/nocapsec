@@ -4,17 +4,26 @@ package engine
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"sync/atomic"
+	"time"
 
+	"github.com/lexdotdev/nocapsec/internal/artifacts"
+	"github.com/lexdotdev/nocapsec/internal/authstate"
+	"github.com/lexdotdev/nocapsec/internal/evidence"
+	"github.com/lexdotdev/nocapsec/internal/policy"
+	"github.com/lexdotdev/nocapsec/internal/validators"
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// ErrNotImplemented is returned by scaffold paths not yet wired.
+// ErrNotImplemented signals a Task dispatched with no Run func.
 var ErrNotImplemented = errors.New("engine: not implemented")
 
-// Limits caps concurrent jobs per capability per target. Zero takes the
-// default; negative means unlimited.
+// Limits caps concurrent jobs per capability per target.
 type Limits struct {
 	HTTPReplay int
 	Timing     int
@@ -42,15 +51,18 @@ func DefaultLimits() Limits {
 	return Limits{HTTPReplay: 5, Timing: 1, Browser: 2, OAST: 8}
 }
 
-// Config holds the engine's execution tuning. Policy, OAST, and artifact
-// wiring join it as the pipeline is built out.
-//
-// TODO: add Env wiring (validators.Env / PolicyEnforcer).
+// Config holds the engine's execution tuning and injected dependencies.
 type Config struct {
-	Limits Limits
+	Limits    Limits
+	Resolver  policy.Resolver
+	Store     artifacts.ArtifactStore
+	AuthStore authstate.Store
+	// InternalAssessment opts into otherwise-blocked IP ranges.
+	InternalAssessment bool
+	// Logger receives structured events; nil disables logging.
+	Logger Logger
 }
 
-// withDefaults fills unset limits so timing never falls back to unlimited.
 func (c Config) withDefaults() Config {
 	d := DefaultLimits()
 	if c.Limits.HTTPReplay == 0 {
@@ -65,32 +77,270 @@ func (c Config) withDefaults() Config {
 	if c.Limits.OAST == 0 {
 		c.Limits.OAST = d.OAST
 	}
+	if c.Resolver == nil {
+		c.Resolver = policy.NewSystemResolver()
+	}
+	if c.Store == nil {
+		c.Store = artifacts.NewStore()
+	}
+	if c.Logger == nil {
+		c.Logger = nopLogger{}
+	}
 	return c
 }
 
-// Engine runs the verification pipeline on bounded pools. Safe for concurrent use.
+// Engine runs the verification pipeline on bounded pools.
 type Engine struct {
-	dispatcher Dispatcher
-	jobs       *jobStore
-	// TODO: hold the Env, validator registry, planner, and evaluator.
+	dispatcher         Dispatcher
+	jobs               *jobStore
+	resolver           policy.Resolver
+	store              artifacts.ArtifactStore
+	authStore          authstate.Store
+	clock              validators.Clock
+	logger             Logger
+	metrics            *Metrics
+	internalAssessment bool
+	closed             atomic.Bool
 }
 
 // New wires the dispatcher, worker pools, and job store from cfg.
-//
-// TODO: build the Env and PolicyEnforcer here (composition root).
 func New(cfg Config) (*Engine, error) {
 	cfg = cfg.withDefaults()
 	return &Engine{
-		dispatcher: newDispatcher(cfg.Limits),
-		jobs:       newJobStore(),
+		dispatcher:         newDispatcher(cfg.Limits),
+		jobs:               newJobStore(),
+		resolver:           cfg.Resolver,
+		store:              cfg.Store,
+		authStore:          cfg.AuthStore,
+		clock:              validators.WallClock{},
+		logger:             cfg.Logger,
+		metrics:            NewMetrics(),
+		internalAssessment: cfg.InternalAssessment,
 	}, nil
 }
 
+// ErrClosed is returned by Verify after Close has been called.
+var ErrClosed = errors.New("engine: closed")
+
 // Verify runs the full pipeline for one finding and returns its terminal Report.
-//
-// TODO: drive normalizer -> policy gate -> planner -> dispatcher -> evaluator.
-func (e *Engine) Verify(_ context.Context, _ []byte) (verdict.Report, error) {
-	return verdict.Report{}, ErrNotImplemented
+func (e *Engine) Verify(ctx context.Context, raw []byte) (verdict.Report, error) {
+	if e.closed.Load() {
+		return verdict.Report{}, ErrClosed
+	}
+
+	finding, err := evidence.Parse(raw)
+	if err != nil {
+		r := e.invalidReport(err)
+		e.metrics.RecordVerdict(r.Verdict)
+		return r, nil
+	}
+
+	e.logger.Info("verify_start", "finding_id", finding.FindingID, "type", finding.Type)
+
+	jobID, err := generateRandomHex()
+	if err != nil {
+		return verdict.Report{}, err
+	}
+
+	artRefs := e.persistEarlyArtifacts(ctx, jobID, finding)
+
+	pe := e.buildEnforcer(finding)
+
+	if reason, policyErr := checkEvidencePolicy(finding, pe); policyErr != nil {
+		r := verdict.Reasoned(finding.FindingID, finding.Type, verdict.Rejected, reason).Stamp(e.clock.Now())
+		r.TargetOrigin = finding.Target.ExpectedOrigin
+		r.Artifacts = artRefs
+		e.metrics.RecordVerdict(r.Verdict)
+		e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(r.Verdict))
+		return r, nil //nolint:nilerr // policy rejection -> Rejected verdict
+	}
+
+	if reason := e.checkAuthIfRequired(ctx, finding); reason != "" {
+		r := verdict.Reasoned(finding.FindingID, finding.Type, verdict.Inconclusive, reason).Stamp(e.clock.Now())
+		r.Artifacts = artRefs
+		e.metrics.RecordVerdict(r.Verdict)
+		e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(r.Verdict))
+		return r, nil
+	}
+
+	report, err := e.planAndDispatch(ctx, finding, pe, raw, jobID, artRefs)
+	if err != nil {
+		return verdict.Report{}, err
+	}
+	e.metrics.RecordVerdict(report.Verdict)
+	e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(report.Verdict))
+	return report, nil
+}
+
+// Metrics returns the engine's metrics counters.
+func (e *Engine) Metrics() *Metrics { return e.metrics }
+
+func (e *Engine) invalidReport(err error) verdict.Report {
+	var ie *evidence.InvalidError
+	if errors.As(err, &ie) {
+		return verdict.Reasoned("", "", verdict.Invalid, ie.Reason).Stamp(e.clock.Now())
+	}
+	return verdict.Reasoned("", "", verdict.Invalid, "parse_error").Stamp(e.clock.Now())
+}
+
+func (e *Engine) persistEarlyArtifacts(ctx context.Context, jobID string, f *evidence.Finding) verdict.ArtifactRefs {
+	refs := verdict.ArtifactRefs{}
+	if ref, err := e.store.Put(ctx, jobID, artifacts.KindEvidence, f.Evidence); err == nil {
+		refs["evidence"] = ref
+	}
+	if data, err := json.Marshal(f.Target); err == nil {
+		if ref, err := e.store.Put(ctx, jobID, artifacts.KindPolicySnapshot, data); err == nil {
+			refs["policy"] = ref
+		}
+	}
+	return refs
+}
+
+func (e *Engine) buildEnforcer(f *evidence.Finding) validators.PolicyEnforcer {
+	return EnforcerFromTarget(targetPolicy{
+		AllowedSchemes:     f.Target.AllowedSchemes,
+		AllowedHosts:       f.Target.AllowedHosts,
+		AllowedPorts:       f.Target.AllowedPorts,
+		ExpectedOrigin:     f.Target.ExpectedOrigin,
+		InternalAssessment: e.internalAssessment,
+	}, e.resolver)
+}
+
+func (e *Engine) checkAuthIfRequired(ctx context.Context, f *evidence.Finding) string {
+	if !f.Auth.Required || f.Auth.AuthStateID == "" || e.authStore == nil {
+		return ""
+	}
+	return e.checkAuth(ctx, f.Auth.AuthStateID)
+}
+
+func (e *Engine) planAndDispatch(ctx context.Context, finding *evidence.Finding, pe validators.PolicyEnforcer, raw []byte, jobID string, artRefs verdict.ArtifactRefs) (verdict.Report, error) {
+	v, ok := validators.Lookup(finding.Type)
+	if !ok {
+		return verdict.Reasoned(finding.FindingID, finding.Type, verdict.Invalid, "no_validator").Stamp(e.clock.Now()), nil
+	}
+
+	nonce, err := generateRandomHex()
+	if err != nil {
+		return verdict.Report{}, err
+	}
+
+	job := validators.Job{Finding: *finding, Nonce: nonce}
+	env := validators.Env{Policy: pe, Artifacts: e.store, AuthStore: e.authStore, Clock: e.clock}
+
+	var vResult validators.Result
+	var vErr error
+	task := Task{
+		Capability: v.Cap(),
+		Target:     finding.Target.AllowedHosts[0],
+		Run: func(ctx context.Context) error {
+			vResult, vErr = v.Validate(ctx, job, env)
+			return nil
+		},
+	}
+
+	e.metrics.RecordPool(v.Cap())
+	if dispErr := e.dispatcher.Dispatch(ctx, task); dispErr != nil {
+		r := verdict.Reasoned(finding.FindingID, finding.Type, verdict.Inconclusive, "dispatch_error").Stamp(e.clock.Now())
+		r.Artifacts = artRefs
+		return r, nil //nolint:nilerr // dispatch failure -> Inconclusive
+	}
+
+	if ref, putErr := e.store.Put(ctx, jobID, artifacts.KindHTTPExchange, raw); putErr == nil {
+		artRefs["http_exchange"] = ref
+	}
+
+	report := evaluate(finding, vResult, vErr, e.clock.Now())
+	report.Artifacts = artRefs
+	return report, nil
+}
+
+// checkAuth loads auth state and verifies it is not expired.
+// Returns a reason code on failure, empty string on success.
+func (e *Engine) checkAuth(ctx context.Context, authStateID string) string {
+	_, err := e.authStore.Get(ctx, authStateID)
+	if err != nil {
+		if errors.Is(err, authstate.ErrExpired) {
+			return "auth_expired"
+		}
+		if errors.Is(err, authstate.ErrNotFound) {
+			return "auth_not_found"
+		}
+		return "auth_healthcheck_failed"
+	}
+	return ""
+}
+
+// evaluate maps the validator's result to a terminal Report.
+func evaluate(f *evidence.Finding, res validators.Result, err error, now time.Time) verdict.Report {
+	pol := verdict.PolicySummary{
+		SchemeOK:            true,
+		InitialOriginPinned: true,
+		FinalOriginOK:       true,
+		Redirects:           res.Redirects,
+	}
+
+	if err != nil {
+		var re *policy.RejectionError
+		if errors.As(err, &re) {
+			return verdict.Reasoned(f.FindingID, f.Type, verdict.Rejected, re.Reason).Stamp(now)
+		}
+		return verdict.Reasoned(f.FindingID, f.Type, verdict.Inconclusive, "operational_error").Stamp(now)
+	}
+
+	switch res.Verdict {
+	case verdict.Verified:
+		return verdict.Proven(f.FindingID, f.Type, f.Target.ExpectedOrigin, res.Proof, pol).Stamp(now)
+	case verdict.NotReproduced:
+		return verdict.Unproven(f.FindingID, f.Type, f.Target.ExpectedOrigin, pol).Stamp(now)
+	case verdict.Rejected:
+		return verdict.Reasoned(f.FindingID, f.Type, verdict.Rejected, "policy_violation").Stamp(now)
+	case verdict.Invalid:
+		return verdict.Reasoned(f.FindingID, f.Type, verdict.Invalid, "validator_invalid").Stamp(now)
+	default:
+		return verdict.Reasoned(f.FindingID, f.Type, verdict.Inconclusive, "unknown_verdict").Stamp(now)
+	}
+}
+
+// checkEvidencePolicy runs the policy gate on the finding's request URLs.
+func checkEvidencePolicy(f *evidence.Finding, pe validators.PolicyEnforcer) (string, error) {
+	urls := extractURLs(f)
+	for _, u := range urls {
+		if _, err := pe.CheckURL(u, policy.PhaseInitial); err != nil {
+			var re *policy.RejectionError
+			if errors.As(err, &re) {
+				return re.Reason, err
+			}
+			return "policy_check_failed", err
+		}
+	}
+	return "", nil
+}
+
+// extractURLs gathers all request URLs from the finding for policy checking.
+func extractURLs(f *evidence.Finding) []string {
+	var urls []string
+	if reqs := evidence.ExtractRequests(f); len(reqs) > 0 {
+		for _, r := range reqs {
+			if r.URL != "" {
+				urls = append(urls, r.URL)
+			}
+		}
+	}
+	for _, c := range f.Controls {
+		if c.URL != "" {
+			urls = append(urls, c.URL)
+		}
+	}
+	return urls
+}
+
+// generateRandomHex returns 16 hex bytes from crypto/rand.
+func generateRandomHex() (string, error) {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 // Handler returns the HTTP API backed by this Engine.
@@ -98,7 +348,11 @@ func (e *Engine) Handler() http.Handler {
 	return newServer(e).handler()
 }
 
-// Close drains and stops the worker pools.
+// Close stops accepting new work and drains in-flight tasks.
 func (e *Engine) Close() error {
-	return e.dispatcher.Close()
+	e.closed.Store(true)
+	e.logger.Info("engine_close", "status", "draining")
+	err := e.dispatcher.Close()
+	e.logger.Info("engine_close", "status", "done")
+	return err
 }

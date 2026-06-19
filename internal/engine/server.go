@@ -1,9 +1,18 @@
 package engine
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
+
+	"github.com/lexdotdev/nocapsec/internal/evidence"
+	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
+
+// maxBodyBytes caps request body reads (1 MiB).
+const maxBodyBytes = 1 << 20
 
 // server adapts an Engine to the verifier HTTP API.
 type server struct {
@@ -23,11 +32,50 @@ func (s *server) handler() http.Handler {
 	return mux
 }
 
-// postVerify accepts evidence, validates it, and dispatches the job.
-//
-// TODO: validate the body, attach policy, dispatch, return {job_id, accepted}.
-func (s *server) postVerify(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "POST /verify")
+// postVerify accepts evidence, validates synchronously, and dispatches the job.
+func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "read_body"})
+		return
+	}
+
+	// Quick schema/normalizer check — invalid findings get 422 synchronously.
+	_, parseErr := evidence.Parse(body)
+	if parseErr != nil {
+		reason := "parse_error"
+		var ie *evidence.InvalidError
+		if ok := errors.As(parseErr, &ie); ok {
+			reason = ie.Reason
+		}
+		writeJSON(w, http.StatusUnprocessableEntity, map[string]string{
+			"verdict": string(verdict.Invalid),
+			"reason":  reason,
+		})
+		return
+	}
+
+	// Generate job ID.
+	jobID, err := generateRandomHex()
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "id_gen"})
+		return
+	}
+
+	// Store initial running state.
+	s.engine.jobs.put(jobID, verdict.NewReport("", "", "running"))
+
+	// Run pipeline in background; use background ctx since the HTTP request
+	// completes before the pipeline finishes (202 async pattern).
+	go func(raw []byte) { //nolint:contextcheck // async pipeline outlives the HTTP request
+		report, _ := s.engine.Verify(context.Background(), raw)
+		s.engine.jobs.put(jobID, report)
+	}(body)
+
+	writeJSON(w, http.StatusAccepted, map[string]string{
+		"job_id": jobID,
+		"status": "accepted",
+	})
 }
 
 // getVerify returns the current Report for a job, or 404 if unknown.
@@ -41,14 +89,17 @@ func (s *server) getVerify(w http.ResponseWriter, r *http.Request) {
 }
 
 // getArtifacts returns artifact references for a job.
-//
-// TODO: back with the artifact store.
-func (s *server) getArtifacts(w http.ResponseWriter, _ *http.Request) {
-	notImplemented(w, "GET /verify/{id}/artifacts")
-}
-
-func notImplemented(w http.ResponseWriter, route string) {
-	writeJSON(w, http.StatusNotImplemented, map[string]string{"error": "not_implemented", "route": route})
+func (s *server) getArtifacts(w http.ResponseWriter, req *http.Request) {
+	report, ok := s.engine.jobs.get(req.PathValue("id"))
+	if !ok {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not_found"})
+		return
+	}
+	refs := report.Artifacts
+	if refs == nil {
+		refs = verdict.ArtifactRefs{}
+	}
+	writeJSON(w, http.StatusOK, refs)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

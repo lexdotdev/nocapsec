@@ -4,26 +4,26 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/lexdotdev/nocapsec/internal/validators"
 )
 
-// Capability names an execution worker pool. A single finding may touch several
-// (e.g. a browser check with an OAST fallback).
-type Capability string
+// Capability is the engine-local alias; the canonical definitions live in
+// internal/validators so a new validator declares its pool without editing
+// engine routing.
+type Capability = validators.Capability
 
 const (
-	CapHTTPReplay Capability = "http-replay" // replay + response-marker validators
-	CapTiming     Capability = "timing"      // time-based differential validators
-	CapBrowser    Capability = "browser"     // Chromium/CDP validators
-	CapOAST       Capability = "oast"        // OAST allocation + polling
+	CapHTTPReplay = validators.CapHTTPReplay
+	CapTiming     = validators.CapTiming
+	CapBrowser    = validators.CapBrowser
+	CapOAST       = validators.CapOAST
 )
 
 // capabilities lists every pool the engine starts.
 var capabilities = []Capability{CapHTTPReplay, CapTiming, CapBrowser, CapOAST}
 
-// Task is one unit of capability work for a pool. Target is the host key the
-// per-target limiter uses; Run performs the work.
-//
-// TODO: the planner builds Run from the selected validator + Env.
+// Task is one unit of capability work for a pool.
 type Task struct {
 	Capability Capability
 	Target     string
