@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/chromedp/cdproto v0.0.0-20260427013145-5737772c319b
 	github.com/chromedp/chromedp v0.15.1
+	github.com/google/jsonschema-go v0.4.3
 	golang.org/x/net v0.55.0
 )
 

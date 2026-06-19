@@ -1,0 +1,24 @@
+{
+  "finding_id": "GHSA-8v65-47jx-7mfr",
+  "type": "ssrf.oast",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8025",
+  "proof": {
+    "correlation_id": "115ec98f06b6c4f51824",
+    "protocol": "http",
+    "source_ip": "127.0.0.1",
+    "attributed_to": "target_infra"
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://2395ad3ca3c14bf6ed6eacf6278d2f36/evidence/3ae9234e56dc38b7",
+    "http_exchange": "artifact://2395ad3ca3c14bf6ed6eacf6278d2f36/http_exchange/cc6ed0d2e2a20de1",
+    "policy": "artifact://2395ad3ca3c14bf6ed6eacf6278d2f36/policy/7e2c2d4f2ee50729"
+  },
+  "decided_at": "2026-06-19T19:25:10.85961+03:00"
+}

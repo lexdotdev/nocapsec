@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "idor.read",
+  "description": "IDOR / BOLA read proven cross-user: owner creates a canary resource, a different user reads it back.",
+  "x-flags": "-authstate (two distinct auth states)",
+  "x-notes": [
+    "resource_owner_auth_state_id and attacker_auth_state_id must differ and resolve in the -authstate file; idor applies each state's credential headers map.",
+    "Top-level auth stays { \"required\": false } — idor authenticates via the two evidence ids, not the single top-level ref.",
+    "{{nonce}} goes in setup_resource.body and expected_marker; {{created_resource_id}} goes in attack_request.url (engine fills it from the setup response's id field)."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "idor.read" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resource_owner_auth_state_id", "attacker_auth_state_id", "setup_resource", "attack_request"],
+      "properties": {
+        "resource_owner_auth_state_id": { "type": "string" },
+        "attacker_auth_state_id": { "type": "string" },
+        "setup_resource": { "$ref": "#/$defs/request" },
+        "attack_request": { "$ref": "#/$defs/request" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_marker", "require_owner_control"],
+      "properties": {
+        "expected_marker": { "type": "string", "description": "Canary the attacker must read back; use {{nonce}}." },
+        "require_owner_control": { "type": "boolean" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "idor-read-order",
+      "type": "idor.read",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "resource_owner_auth_state_id": "owner-session",
+        "attacker_auth_state_id": "attacker-session",
+        "setup_resource": {
+          "method": "POST",
+          "url": "https://app.example.com/api/notes",
+          "headers": [{ "name": "content-type", "value": "application/json" }],
+          "body": "{\"text\":\"IDOR_CANARY_{{nonce}}\"}"
+        },
+        "attack_request": {
+          "method": "GET",
+          "url": "https://app.example.com/api/notes/{{created_resource_id}}"
+        }
+      },
+      "proof": {
+        "expected_marker": "IDOR_CANARY_{{nonce}}",
+        "require_owner_control": true
+      }
+    }
+  ]
+}

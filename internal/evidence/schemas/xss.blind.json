@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "xss.blind",
+  "description": "Blind XSS: inject an OAST URL; the proof is an out-of-band callback whose path carries the nonce.",
+  "x-flags": "-oast",
+  "x-notes": [
+    "evidence.mutation_slots.oast_url names where the OAST URL is written in request.body: a form field name, or \"body.<field>\".",
+    "The engine injects the allocated HTTPS OAST URL; you supply the request and the slot, not a hand-built script string.",
+    "poll_window_seconds defaults to 900; blind XSS can be slow. Window expiry maps to not_reproduced."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "xss.blind" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "mutation_slots"],
+      "properties": {
+        "request": { "$ref": "#/$defs/request" },
+        "mutation_slots": {
+          "type": "object",
+          "required": ["oast_url"],
+          "additionalProperties": { "type": "string" },
+          "description": "Must contain oast_url -> the body field the OAST URL is written into."
+        },
+        "payload_marker": { "type": "string" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_signal", "expected_path_contains"],
+      "properties": {
+        "expected_signal": { "type": "string", "description": "e.g. oast_http" },
+        "expected_path_contains": { "type": "string", "description": "e.g. {{nonce}}" },
+        "poll_window_seconds": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "blind-xss-contact",
+      "type": "xss.blind",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "request": {
+          "method": "POST",
+          "url": "https://app.example.com/support/contact",
+          "headers": [{ "name": "content-type", "value": "application/x-www-form-urlencoded" }],
+          "body": "message=placeholder"
+        },
+        "mutation_slots": { "oast_url": "message" },
+        "payload_marker": "VERIFIER_BLIND_{{nonce}}"
+      },
+      "proof": {
+        "expected_signal": "oast_http",
+        "expected_path_contains": "{{nonce}}",
+        "poll_window_seconds": 900
+      }
+    }
+  ]
+}

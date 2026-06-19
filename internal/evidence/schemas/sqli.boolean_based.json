@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sqli.boolean_based",
+  "description": "Blind SQLi proven by a true-condition response matching baseline and a false-condition response stably differing.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "true_condition should behave like baseline; false_condition should differ. Make them differ ONLY in the boolean condition.",
+    "compare values: status, body_hash_fuzzy, content_length_bucket, semantic_markers. A robust default is [\"status\", \"body_hash_fuzzy\"]."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "sqli.boolean_based" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "vulnerable_parameter"],
+      "properties": {
+        "requests": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["baseline", "true_condition", "false_condition"],
+          "properties": {
+            "baseline": { "$ref": "#/$defs/request" },
+            "true_condition": { "$ref": "#/$defs/request" },
+            "false_condition": { "$ref": "#/$defs/request" }
+          }
+        },
+        "vulnerable_parameter": { "type": "string" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_true_similarity_to_baseline", "expected_false_difference", "compare", "repetitions"],
+      "properties": {
+        "expected_true_similarity_to_baseline": { "type": "boolean" },
+        "expected_false_difference": { "type": "boolean" },
+        "compare": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["status", "body_hash_fuzzy", "content_length_bucket", "semantic_markers"] }
+        },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "sqli-boolean-id",
+      "type": "sqli.boolean_based",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "requests": {
+          "baseline": { "method": "GET", "url": "https://app.example.com/item?id=1" },
+          "true_condition": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%201=1" },
+          "false_condition": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%201=2" }
+        },
+        "vulnerable_parameter": "id"
+      },
+      "proof": {
+        "expected_true_similarity_to_baseline": true,
+        "expected_false_difference": true,
+        "compare": ["status", "body_hash_fuzzy"],
+        "repetitions": 3
+      }
+    }
+  ]
+}

@@ -12,7 +12,6 @@ const validPathTraversal = `{
   "finding_id": "pt-1",
   "type": "path_traversal.file_read",
   "target": {
-    "scope_id": "acme",
     "expected_origin": "https://app.example.com",
     "allowed_hosts": ["app.example.com"],
     "allowed_schemes": ["https"],
@@ -25,8 +24,7 @@ const validPathTraversal = `{
     "expected_markers": ["VERIFIER_CANARY_FILE_2026"],
     "negative_control": {"method": "GET", "url": "https://app.example.com/download?file=normal.txt"}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true},
-  "side_effects": {"state_changing": false}
+  "proof": {"require_marker": true, "require_negative_control_absent": true}
 }`
 
 func mustParse(t *testing.T, raw string) *Finding {
@@ -149,18 +147,18 @@ func TestParseRejects(t *testing.T) {
 		{"empty body", ``, ReasonEmptyBody},
 		{"whitespace body", "   \n  ", ReasonEmptyBody},
 		{"malformed json", `{ not json `, ReasonMalformedJSON},
-		{"unknown top-level field", `{"finding_id":"a","type":"path_traversal.file_read","target":{},"evidence":{},"proof":{},"surprise":1}`, ReasonUnknownField},
+		{"unknown top-level field", `{"finding_id":"a","type":"path_traversal.file_read","target":{},"evidence":{},"proof":{},"surprise":1}`, ReasonSchemaViolation},
 		{"missing type", `{"finding_id":"a","target":{},"evidence":{},"proof":{}}`, ReasonMissingField},
-		{"empty finding_id", `{"finding_id":"","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"x":1},"proof":{}}`, ReasonMissingField},
+		{"empty finding_id", `{"finding_id":"","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"x":1},"proof":{}}`, ReasonSchemaViolation},
 		{
 			"prose-only evidence",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":"I think this is vulnerable","proof":{}}`,
-			ReasonProseOnly,
+			ReasonSchemaViolation,
 		},
 		{
 			"empty evidence object",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{},"proof":{}}`,
-			ReasonProseOnly,
+			ReasonSchemaViolation,
 		},
 		{
 			"unknown vulnerability type",
@@ -170,37 +168,37 @@ func TestParseRejects(t *testing.T) {
 		{
 			"target missing allowed_hosts",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_schemes":["https"]},"evidence":{"x":1},"proof":{}}`,
-			ReasonMissingField,
+			ReasonSchemaViolation,
 		},
 		{
 			"target empty allowed_hosts",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":[],"allowed_schemes":["https"]},"evidence":{"x":1},"proof":{}}`,
-			ReasonMissingField,
+			ReasonSchemaViolation,
 		},
 		{
-			"auth carries inlined cookie",
+			"auth carries inlined cookie (unknown auth key)",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"auth":{"required":true,"cookie":"session=abc"},"evidence":{"x":1},"proof":{}}`,
-			ReasonInlinedCredential,
+			ReasonSchemaViolation,
 		},
 		{
 			"auth required without auth_state_id",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"auth":{"required":true},"evidence":{"x":1},"proof":{}}`,
-			ReasonMissingField,
+			ReasonSchemaViolation,
 		},
 		{
 			"missing required evidence field",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x"}},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
-			ReasonMissingField,
+			ReasonSchemaViolation,
 		},
 		{
 			"unknown evidence field (strict)",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x"},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"},"extra":1},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
-			ReasonUnknownField,
+			ReasonSchemaViolation,
 		},
 		{
 			"evidence request missing url",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET"},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"}},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
-			ReasonBadRequest,
+			ReasonSchemaViolation,
 		},
 		{
 			"evidence request inlines authorization header",
@@ -210,12 +208,12 @@ func TestParseRejects(t *testing.T) {
 		{
 			"proof field wrong type",
 			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x"},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"}},"proof":{"require_marker":"yes","require_negative_control_absent":true}}`,
-			ReasonWrongType,
+			ReasonSchemaViolation,
 		},
 		{
 			"empty setup array",
 			`{"finding_id":"a","type":"xss.stored","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"setup":[],"trigger":{"method":"GET","url":"https://a/v"},"vulnerable_parameter":"n","payload_marker":"M"},"proof":{"accepted_signals":["javascript_dialog"],"expected_message_contains":"M","expected_execution_origin":"https://a","timeout_ms":1}}`,
-			ReasonBadRequest,
+			ReasonSchemaViolation,
 		},
 	}
 
@@ -340,12 +338,25 @@ func TestParseMutationSlots(t *testing.T) {
 	assertInvalid(t, dangling, ReasonDanglingSlot)
 }
 
-// Every registered type must have at least one declared request path or request
-// array so the canonicalizer and replay have something to operate on.
+// Every type's example must declare at least one request, so the canonicalizer
+// and replay have something to operate on.
 func TestEveryTypeHasRequests(t *testing.T) {
-	for typ, ts := range typeSchemas {
-		if len(ts.requests) == 0 && len(ts.requestArrays) == 0 {
-			t.Errorf("type %q declares no request paths", typ)
+	for _, typ := range schemaTypes() {
+		doc, _ := schemaDoc(typ)
+		var d struct {
+			Examples []json.RawMessage `json:"examples"`
+		}
+		if json.Unmarshal(doc, &d) != nil || len(d.Examples) == 0 {
+			t.Errorf("%s: no example", typ)
+			continue
+		}
+		f, err := Parse(d.Examples[0])
+		if err != nil {
+			t.Errorf("%s: example does not parse: %v", typ, err)
+			continue
+		}
+		if len(ExtractRequests(f)) == 0 {
+			t.Errorf("type %q example declares no requests", typ)
 		}
 	}
 }

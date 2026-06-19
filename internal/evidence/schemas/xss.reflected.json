@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "xss.reflected",
+  "description": "Reflected / DOM XSS proven by a JS dialog or allowed console signal carrying the nonce, from the target origin.",
+  "x-flags": "-browser",
+  "x-notes": [
+    "Put {{nonce}} in the entrypoint payload and in expected_message_contains; the engine fills it per run and the signal must carry it.",
+    "javascript:/data: payloads are rejected — the signal must come from the target page over http(s).",
+    "Prefer a javascript_dialog signal; console_log is held to a stricter origin/attribution bar."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "xss.reflected" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entrypoint", "payload_marker", "trigger"],
+      "properties": {
+        "entrypoint": { "$ref": "#/$defs/request" },
+        "payload_marker": { "type": "string", "description": "Marker the payload prints, containing {{nonce}}." },
+        "vulnerable_parameter": { "type": "string" },
+        "trigger": {
+          "type": "object",
+          "description": "How the browser triggers the payload.",
+          "properties": {
+            "kind": { "type": "string", "description": "e.g. browser_navigate" },
+            "wait": { "type": "string", "description": "e.g. load_or_network_idle" },
+            "post_load_actions": { "type": "array" }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted_signals", "expected_message_contains", "expected_execution_origin"],
+      "properties": {
+        "accepted_signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["javascript_dialog", "console_log"] }
+        },
+        "expected_message_contains": { "type": "string", "description": "Must contain {{nonce}}." },
+        "expected_execution_origin": { "type": "string" },
+        "allow_iframe_execution": { "type": "boolean" },
+        "timeout_ms": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "reflected-xss-search",
+      "type": "xss.reflected",
+      "target": {
+        "expected_origin": "http://127.0.0.1:3000",
+        "allowed_hosts": ["127.0.0.1"],
+        "allowed_schemes": ["http"],
+        "allowed_ports": [3000]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "entrypoint": {
+          "method": "GET",
+          "url": "http://127.0.0.1:3000/search?q=%3Cscript%3Ealert(%22nocapsec-{{nonce}}%22)%3C%2Fscript%3E"
+        },
+        "vulnerable_parameter": "q",
+        "payload_marker": "nocapsec-{{nonce}}",
+        "trigger": { "kind": "browser_navigate", "wait": "load_or_network_idle", "post_load_actions": [] }
+      },
+      "proof": {
+        "accepted_signals": ["javascript_dialog"],
+        "expected_message_contains": "nocapsec-{{nonce}}",
+        "expected_execution_origin": "http://127.0.0.1:3000",
+        "allow_iframe_execution": false,
+        "timeout_ms": 7000
+      }
+    }
+  ]
+}

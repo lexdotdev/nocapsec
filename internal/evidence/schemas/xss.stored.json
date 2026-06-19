@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "xss.stored",
+  "description": "Stored XSS: setup requests store a nonce payload, then a fresh browser context loads the trigger and the payload executes there.",
+  "x-flags": "-browser -authstate (when the flow needs auth)",
+  "x-notes": [
+    "{{nonce}} goes in the stored payload (setup body/URL) and in expected_message_contains.",
+    "side_effects.cleanup (optional) should undo the stored payload; it runs regardless of verdict.",
+    "For real impact, store as one role and trigger as another (different auth_state_id)."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "xss.stored" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup", "trigger", "vulnerable_parameter", "payload_marker"],
+      "properties": {
+        "setup": { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/request" } },
+        "trigger": { "$ref": "#/$defs/request" },
+        "vulnerable_parameter": { "type": "string" },
+        "payload_marker": { "type": "string", "description": "Marker containing {{nonce}}." }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["accepted_signals", "expected_message_contains", "expected_execution_origin", "timeout_ms"],
+      "properties": {
+        "accepted_signals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["javascript_dialog", "console_log"] }
+        },
+        "expected_message_contains": { "type": "string", "description": "Must contain {{nonce}}." },
+        "expected_execution_origin": { "type": "string" },
+        "timeout_ms": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "stored-xss-profile",
+      "type": "xss.stored",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": true, "auth_state_id": "user-session", "role": "user" },
+      "evidence": {
+        "setup": [
+          {
+            "method": "POST",
+            "url": "https://app.example.com/profile",
+            "headers": [{ "name": "content-type", "value": "application/x-www-form-urlencoded" }],
+            "body": "display_name=%3Cscript%3Ealert('VERIFIER_STORED_{{nonce}}')%3C%2Fscript%3E"
+          }
+        ],
+        "trigger": { "method": "GET", "url": "https://app.example.com/users/me" },
+        "vulnerable_parameter": "display_name",
+        "payload_marker": "VERIFIER_STORED_{{nonce}}"
+      },
+      "proof": {
+        "accepted_signals": ["javascript_dialog", "console_log"],
+        "expected_message_contains": "VERIFIER_STORED_{{nonce}}",
+        "expected_execution_origin": "https://app.example.com",
+        "timeout_ms": 10000
+      },
+      "side_effects": {
+        "cleanup": [
+          {
+            "method": "POST",
+            "url": "https://app.example.com/profile",
+            "headers": [{ "name": "content-type", "value": "application/x-www-form-urlencoded" }],
+            "body": "display_name=clean"
+          }
+        ]
+      }
+    }
+  ]
+}

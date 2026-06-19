@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -51,7 +52,7 @@ func parseSSRFEvidence(job Job) (ssrfOASTEvidence, ssrfOASTProof, verdict.Verdic
 	if err := json.Unmarshal(job.Finding.Proof, &proof); err != nil {
 		return ev, proof, verdict.Invalid
 	}
-	if ev.InjectionLocation.Kind == "" || ev.InjectionLocation.JSONPointer == "" {
+	if !validSSRFInjectionLocation(ev.InjectionLocation) {
 		return ev, proof, verdict.Invalid
 	}
 	if ev.Request.Method == "" || ev.Request.URL == "" {
@@ -129,6 +130,7 @@ type ssrfOASTEvidence struct {
 type ssrfInjectionLocation struct {
 	Kind        string `json:"kind"`
 	JSONPointer string `json:"json_pointer"`
+	Name        string `json:"name"`
 }
 
 type ssrfOASTProof struct {
@@ -137,20 +139,54 @@ type ssrfOASTProof struct {
 	RequireSourceNotVerifier bool   `json:"require_source_not_verifier"`
 }
 
-// injectOASTURL inserts the OAST URL at the declared injection location.
+func validSSRFInjectionLocation(loc ssrfInjectionLocation) bool {
+	switch loc.Kind {
+	case "json_body":
+		return loc.JSONPointer != ""
+	case "query":
+		return loc.Name != ""
+	default:
+		return false
+	}
+}
+
 func injectOASTURL(req evidence.Request, loc ssrfInjectionLocation, tok *oast.OASTToken) (evidence.Request, error) {
-	if loc.Kind != "json_body" {
+	switch loc.Kind {
+	case "json_body":
+		return injectJSONBody(req, loc.JSONPointer, tok.URLHTTPS)
+	case "query":
+		return injectQuery(req, loc.Name, tok.URLHTTPS)
+	default:
 		return evidence.Request{}, fmt.Errorf("unsupported injection kind %q", loc.Kind)
 	}
+}
+
+func injectJSONBody(req evidence.Request, pointer, value string) (evidence.Request, error) {
 	if req.Body == "" {
 		return evidence.Request{}, fmt.Errorf("empty body for json_body injection")
 	}
-	patched, err := setJSONPointer([]byte(req.Body), loc.JSONPointer, tok.URLHTTPS)
+	patched, err := setJSONPointer([]byte(req.Body), pointer, value)
 	if err != nil {
 		return evidence.Request{}, err
 	}
 	out := req
 	out.Body = string(patched)
+	return out, nil
+}
+
+func injectQuery(req evidence.Request, name, value string) (evidence.Request, error) {
+	u, err := url.Parse(req.URL)
+	if err != nil {
+		return evidence.Request{}, err
+	}
+	q := u.Query()
+	if _, ok := q[name]; !ok {
+		return evidence.Request{}, fmt.Errorf("missing query parameter %q", name)
+	}
+	q.Set(name, value)
+	out := req
+	u.RawQuery = q.Encode()
+	out.URL = u.String()
 	return out, nil
 }
 

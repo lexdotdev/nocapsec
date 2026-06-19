@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "path_traversal.file_read",
+  "description": "Path traversal / file read proven by a known marker present in the traversal response and absent from a negative control.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "expected_markers: strings unique to the leaked file (e.g. \"root:x:0:0:\" for /etc/passwd). Avoid generic strings.",
+    "negative_control: a legitimate file read on the same endpoint; the marker must be absent there.",
+    "Prefer a planted canary file you can read back over sensitive system files."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "path_traversal.file_read" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "vulnerable_parameter", "expected_markers", "negative_control"],
+      "properties": {
+        "request": { "$ref": "#/$defs/request" },
+        "vulnerable_parameter": { "type": "string" },
+        "expected_markers": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "negative_control": { "$ref": "#/$defs/request" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["require_marker", "require_negative_control_absent"],
+      "properties": {
+        "require_marker": { "type": "boolean" },
+        "require_negative_control_absent": { "type": "boolean" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "lfi-download",
+      "type": "path_traversal.file_read",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "request": { "method": "GET", "url": "https://app.example.com/download?file=..%2F..%2F..%2Fetc%2Fpasswd" },
+        "vulnerable_parameter": "file",
+        "expected_markers": ["root:x:0:0:"],
+        "negative_control": { "method": "GET", "url": "https://app.example.com/download?file=readme.txt" }
+      },
+      "proof": { "require_marker": true, "require_negative_control_absent": true }
+    }
+  ]
+}

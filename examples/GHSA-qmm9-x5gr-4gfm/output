@@ -1,0 +1,26 @@
+{
+  "finding_id": "GHSA-qmm9-x5gr-4gfm",
+  "type": "open_redirect",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:3100",
+  "proof": {
+    "initial_origin": "http://127.0.0.1:3100",
+    "final_url": "http://127.0.0.1:39099/nocapsec-e4e021779ee3d8676015c2badf528249/",
+    "final_origin": "http://127.0.0.1:39099",
+    "nonce_present": true
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": [
+      "http://127.0.0.1:39099 http://127.0.0.1:39099/nocapsec-e4e021779ee3d8676015c2badf528249/"
+    ]
+  },
+  "artifacts": {
+    "evidence": "artifact://9f0f17182939e294ada93ba50c1c4664/evidence/c330682649833c4d",
+    "http_exchange": "artifact://9f0f17182939e294ada93ba50c1c4664/http_exchange/4e27359c587d3b1b",
+    "policy": "artifact://9f0f17182939e294ada93ba50c1c4664/policy/9f0229390b3d6d1a"
+  },
+  "decided_at": "2026-06-19T19:24:59.077715+03:00"
+}

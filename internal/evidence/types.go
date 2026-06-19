@@ -1,6 +1,4 @@
-// Package evidence parses an untrusted client finding into a canonical,
-// validated Finding. It is the trust boundary's front door: prose-only or
-// malformed input is rejected here before anything executes. Stdlib only.
+// Package evidence parses an client finding into a canonical, validated Finding.
 package evidence
 
 import (
@@ -26,9 +24,8 @@ type Request struct {
 	Body    string   `json:"body,omitempty"`
 }
 
-// Target carries the scope, expected origin, and allowlists that bound a finding.
+// Target carries the expected origin and allowlists that bound a finding.
 type Target struct {
-	ScopeID        string   `json:"scope_id"`
 	ExpectedOrigin string   `json:"expected_origin"`
 	AllowedHosts   []string `json:"allowed_hosts"`
 	AllowedSchemes []string `json:"allowed_schemes"`
@@ -46,10 +43,9 @@ type AuthRef struct {
 // verifier may write (param name, JSON pointer, body field).
 type MutationSlots map[string]string
 
-// SideEffects declares whether a finding changes state and how to clean up.
+// SideEffects declares how to clean up after a state-changing finding.
 type SideEffects struct {
-	StateChanging bool      `json:"state_changing"`
-	Cleanup       []Request `json:"cleanup,omitempty"`
+	Cleanup []Request `json:"cleanup,omitempty"`
 }
 
 // Finding is the normalized, validated finding the pipeline operates on.

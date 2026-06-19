@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
@@ -71,6 +72,33 @@ func redirectEnforcer(t *testing.T, ip net.IP, port int) validators.PolicyEnforc
 	return &testPolicyEnforcer{checker: checker}
 }
 
+type entrypointRedirectBrowser struct {
+	origin string
+}
+
+func (b entrypointRedirectBrowser) Run(_ context.Context, job browser.BrowserJob) (browser.BrowserResult, error) {
+	finalURL := strings.TrimPrefix(job.Entrypoint.URL, b.origin+"/login?next=")
+	return browser.BrowserResult{
+		Navigation: []browser.NavEvent{
+			{Origin: originOf(finalURL), URL: finalURL},
+		},
+		Network: []browser.NetEvent{
+			{URL: job.Entrypoint.URL, Method: "GET"},
+			{URL: finalURL, Method: "GET"},
+		},
+		FinalURL: finalURL,
+	}, nil
+}
+
+func originOf(raw string) string {
+	offset := len("http://")
+	i := strings.Index(raw[offset:], "/")
+	if i == -1 {
+		return raw
+	}
+	return raw[:offset+i]
+}
+
 func TestOpenRedirectVerified(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -109,6 +137,90 @@ func TestOpenRedirectVerified(t *testing.T) {
 	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
+	}
+}
+
+func TestOpenRedirectVerifiedNetworkTransition(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	nonce := "netredir"
+	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	externalOrigin := "http://evil.example.com:8080"
+
+	fb := &fakeBrowser{result: browser.BrowserResult{
+		Navigation: []browser.NavEvent{
+			{Origin: externalOrigin, URL: externalOrigin + "/redir/" + nonce},
+		},
+		Network: []browser.NetEvent{
+			{URL: origin + "/login?next=" + externalOrigin + "/redir/" + nonce, Method: "GET"},
+			{URL: externalOrigin + "/redir/" + nonce, Method: "GET"},
+		},
+		FinalURL: externalOrigin + "/redir/" + nonce,
+	}}
+
+	env := validators.Env{
+		Browser:   fb,
+		Policy:    redirectEnforcer(t, ip, port),
+		Artifacts: artifacts.NewStore(),
+		Clock:     validators.WallClock{},
+	}
+
+	v, _ := validators.Lookup("open_redirect")
+	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+}
+
+func TestOpenRedirectEncodedNonceSlot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	nonce := "encodedslot"
+	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	externalOrigin := "http://evil.example.com:8080"
+	ev, _ := json.Marshal(map[string]any{
+		"entrypoint": map[string]string{
+			"method": "GET",
+			"url":    origin + "/login?next=" + externalOrigin + "/redir/%7B%7Bnonce%7D%7D",
+		},
+		"redirect_parameter":      "next",
+		"expected_initial_origin": origin,
+		"expected_final_origin":   externalOrigin,
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":               "browser_final_url_or_oast_http",
+		"require_initial_target_origin": true,
+		"require_final_external_origin": true,
+	})
+	job := redirectJob(t, port, nonce, externalOrigin)
+	job.Finding.Evidence = ev
+	job.Finding.Proof = proof
+
+	env := validators.Env{
+		Browser:   entrypointRedirectBrowser{origin: origin},
+		Policy:    redirectEnforcer(t, ip, port),
+		Artifacts: artifacts.NewStore(),
+		Clock:     validators.WallClock{},
+	}
+
+	v, _ := validators.Lookup("open_redirect")
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
 }
 

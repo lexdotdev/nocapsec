@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/lexdotdev/nocapsec/internal/browser"
 	"github.com/lexdotdev/nocapsec/internal/evidence"
@@ -39,8 +38,8 @@ func (xssStored) Validate(ctx context.Context, job Job, env Env) (Result, error)
 
 	// Inject the per-run nonce so the stored payload carries it.
 	for i := range ev.Setup {
-		ev.Setup[i].URL = strings.ReplaceAll(ev.Setup[i].URL, "{{nonce}}", job.Nonce)
-		ev.Setup[i].Body = strings.ReplaceAll(ev.Setup[i].Body, "{{nonce}}", job.Nonce)
+		ev.Setup[i].URL = replaceNonceSlot(ev.Setup[i].URL, job.Nonce)
+		ev.Setup[i].Body = replaceNonceSlot(ev.Setup[i].Body, job.Nonce)
 	}
 
 	// Run cleanup on all exit paths.

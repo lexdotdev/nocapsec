@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
 	"sync"
 	"testing"
@@ -532,6 +533,101 @@ func TestSSRFOASTNestedJSONPointer(t *testing.T) {
 				t.Fatalf("action field changed: %q", action)
 			}
 		}
+	}
+}
+
+func TestSSRFOASTQueryInjection(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("ssrf.oast")
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "GET",
+			"url":    base + "/proxy?url=http%3A%2F%2Fplaceholder.invalid&mode=raw",
+		},
+		"injection_location": map[string]string{
+			"kind": "query",
+			"name": "url",
+		},
+		"expected_protocols": []string{"http"},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":     "oast_interaction",
+		"poll_window_seconds": 30,
+	})
+
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-ssrf-query",
+			Type:      "ssrf.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			tok := findFakeToken(fake)
+			if tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "Go-http-client/1.1",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+
+	parsed, err := url.Parse(gotURL)
+	if err != nil {
+		t.Fatalf("parse replay URL: %v", err)
+	}
+	values := parsed.Query()
+	if values.Get("mode") != "raw" {
+		t.Fatalf("mode changed: %q", values.Get("mode"))
+	}
+	if values.Get("url") == "http://placeholder.invalid" || values.Get("url") == "" {
+		t.Fatalf("url was not injected: %q", values.Get("url"))
 	}
 }
 

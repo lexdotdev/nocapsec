@@ -7,26 +7,20 @@ import (
 	"strings"
 )
 
-// Canonicalize rewrites a Finding into replay-safe form: request URLs get a
+// Canonicalize rewrites a Finding into replay-safe form: every request URL gets a
 // lower-cased scheme/host (trailing dot stripped) and canonical header casing.
-// Everything else is preserved. Security canonicalization (IDNA, scope, DNS)
-// is the policy gate's job, not this one.
+// Request objects are found structurally (any object with method+url), so no
+// per-type metadata is needed. Everything else is preserved.
 func Canonicalize(f *Finding) error {
-	if ts, ok := typeSchemas[f.Type]; ok && len(f.Evidence) > 0 {
-		if m, err := decodeObject(f.Evidence); err == nil {
-			for _, p := range ts.requests {
-				if err := rewriteRequest(m, strings.Split(p, ".")); err != nil {
-					return err
-				}
+	if len(f.Evidence) > 0 {
+		var v any
+		if err := json.Unmarshal(f.Evidence, &v); err == nil {
+			if err := canonicalizeValue(v); err != nil {
+				return err
 			}
-			for _, p := range ts.requestArrays {
-				if err := rewriteRequestArray(m, p); err != nil {
-					return err
-				}
-			}
-			b, err := json.Marshal(m)
+			b, err := json.Marshal(v)
 			if err != nil {
-				return invalid(ReasonWrongType, "evidence", err)
+				return invalid(ReasonSchemaViolation, "evidence", err)
 			}
 			f.Evidence = b
 		}
@@ -44,22 +38,88 @@ func Canonicalize(f *Finding) error {
 	return nil
 }
 
-// canonicalizeRequest lower-cases the URL scheme/host and header names in place.
+// canonicalizeValue walks a decoded JSON tree and canonicalizes every
+// request-shaped object in place.
+func canonicalizeValue(v any) error {
+	switch t := v.(type) {
+	case map[string]any:
+		if isRequestShape(t) {
+			if err := canonicalizeRequestMap(t); err != nil {
+				return err
+			}
+		}
+		for _, child := range t {
+			if err := canonicalizeValue(child); err != nil {
+				return err
+			}
+		}
+	case []any:
+		for _, child := range t {
+			if err := canonicalizeValue(child); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// isRequestShape reports whether a decoded object is a request (has string
+// method and url).
+func isRequestShape(m map[string]any) bool {
+	_, hasMethod := m["method"].(string)
+	_, hasURL := m["url"].(string)
+	return hasMethod && hasURL
+}
+
+// canonicalizeRequestMap canonicalizes the url and header names of a decoded
+// request object in place.
+func canonicalizeRequestMap(m map[string]any) error {
+	if raw, ok := m["url"].(string); ok && raw != "" {
+		canon, err := canonicalURL(raw)
+		if err != nil {
+			return err
+		}
+		m["url"] = canon
+	}
+	if hs, ok := m["headers"].([]any); ok {
+		for _, h := range hs {
+			if hm, ok := h.(map[string]any); ok {
+				if name, ok := hm["name"].(string); ok {
+					hm["name"] = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(name))
+				}
+			}
+		}
+	}
+	return nil
+}
+
+// canonicalizeRequest lower-cases the URL scheme/host and header names of a typed
+// request in place.
 func canonicalizeRequest(r *Request) error {
 	if r.URL != "" {
-		u, err := url.Parse(r.URL)
+		canon, err := canonicalURL(r.URL)
 		if err != nil {
-			return invalid(ReasonBadURL, "url", err)
+			return err
 		}
-		u.Scheme = strings.ToLower(u.Scheme)
-		host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
-		u.Host = rebuildHost(host, u.Port())
-		r.URL = u.String()
+		r.URL = canon
 	}
 	for i := range r.Headers {
 		r.Headers[i].Name = textproto.CanonicalMIMEHeaderKey(strings.TrimSpace(r.Headers[i].Name))
 	}
 	return nil
+}
+
+// canonicalURL lower-cases the scheme and host (stripping a trailing dot),
+// preserving path, query, and port.
+func canonicalURL(raw string) (string, error) {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return "", invalid(ReasonBadURL, "url", err)
+	}
+	u.Scheme = strings.ToLower(u.Scheme)
+	host := strings.TrimSuffix(strings.ToLower(u.Hostname()), ".")
+	u.Host = rebuildHost(host, u.Port())
+	return u.String(), nil
 }
 
 // rebuildHost reassembles a host[:port] authority, bracketing IPv6 literals.
@@ -76,96 +136,15 @@ func rebuildHost(host, port string) string {
 	return host
 }
 
-// rewriteRequest canonicalizes the request object at a dotted path inside an
-// evidence map, re-marshaling each level it descends through.
-func rewriteRequest(m map[string]json.RawMessage, parts []string) error {
-	raw, ok := m[parts[0]]
-	if !ok {
-		return nil
-	}
-	if len(parts) == 1 {
-		var r Request
-		if err := json.Unmarshal(raw, &r); err != nil {
-			return invalid(ReasonBadRequest, parts[0], err)
-		}
-		if err := canonicalizeRequest(&r); err != nil {
-			return err
-		}
-		b, err := json.Marshal(r)
-		if err != nil {
-			return invalid(ReasonWrongType, parts[0], err)
-		}
-		m[parts[0]] = b
-		return nil
-	}
-	child, err := decodeObject(raw)
-	if err != nil {
-		return invalid(ReasonWrongType, parts[0], err)
-	}
-	if err := rewriteRequest(child, parts[1:]); err != nil {
-		return err
-	}
-	b, err := json.Marshal(child)
-	if err != nil {
-		return invalid(ReasonWrongType, parts[0], err)
-	}
-	m[parts[0]] = b
-	return nil
-}
-
-// rewriteRequestArray canonicalizes every request in a top-level array field.
-func rewriteRequestArray(m map[string]json.RawMessage, path string) error {
-	raw, ok := m[path]
-	if !ok {
-		return nil
-	}
-	var arr []Request
-	if err := json.Unmarshal(raw, &arr); err != nil {
-		return invalid(ReasonBadRequest, path, err)
-	}
-	for i := range arr {
-		if err := canonicalizeRequest(&arr[i]); err != nil {
-			return err
-		}
-	}
-	b, err := json.Marshal(arr)
-	if err != nil {
-		return invalid(ReasonWrongType, path, err)
-	}
-	m[path] = b
-	return nil
-}
-
-// ExtractRequests returns all requests from a parsed finding for external use
-// (policy checking, URL extraction).
+// ExtractRequests returns every request a finding declares (in evidence,
+// controls, and cleanup) for external use such as policy checking. Requests are
+// found structurally, so the set does not depend on the finding type.
 func ExtractRequests(f *Finding) []Request {
-	ts, ok := typeSchemas[f.Type]
-	if !ok {
-		return nil
-	}
-	return evidenceRequests(f, ts)
-}
-
-// evidenceRequests gathers every request the finding declares, so slot
-// locations can be checked against real positions.
-func evidenceRequests(f *Finding, ts typeSchema) []Request {
 	var reqs []Request
-	if m, err := decodeObject(f.Evidence); err == nil {
-		for _, p := range ts.requests {
-			if raw, ok := resolvePath(m, strings.Split(p, ".")); ok {
-				var r Request
-				if json.Unmarshal(raw, &r) == nil {
-					reqs = append(reqs, r)
-				}
-			}
-		}
-		for _, p := range ts.requestArrays {
-			if raw, ok := m[p]; ok {
-				var arr []Request
-				if json.Unmarshal(raw, &arr) == nil {
-					reqs = append(reqs, arr...)
-				}
-			}
+	if len(f.Evidence) > 0 {
+		var v any
+		if json.Unmarshal(f.Evidence, &v) == nil {
+			collectRequests(v, &reqs)
 		}
 	}
 	reqs = append(reqs, f.Controls...)
@@ -173,18 +152,24 @@ func evidenceRequests(f *Finding, ts typeSchema) []Request {
 	return reqs
 }
 
-// resolvePath walks a dotted path through nested JSON objects.
-func resolvePath(m map[string]json.RawMessage, parts []string) (json.RawMessage, bool) {
-	raw, ok := m[parts[0]]
-	if !ok {
-		return nil, false
+// collectRequests gathers every request-shaped object in a decoded JSON tree.
+func collectRequests(v any, out *[]Request) {
+	switch t := v.(type) {
+	case map[string]any:
+		if isRequestShape(t) {
+			if b, err := json.Marshal(t); err == nil {
+				var r Request
+				if json.Unmarshal(b, &r) == nil {
+					*out = append(*out, r)
+				}
+			}
+		}
+		for _, child := range t {
+			collectRequests(child, out)
+		}
+	case []any:
+		for _, child := range t {
+			collectRequests(child, out)
+		}
 	}
-	if len(parts) == 1 {
-		return raw, true
-	}
-	child, err := decodeObject(raw)
-	if err != nil {
-		return nil, false
-	}
-	return resolvePath(child, parts[1:])
 }

@@ -20,6 +20,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/browser"
 	"github.com/lexdotdev/nocapsec/internal/config"
 	"github.com/lexdotdev/nocapsec/internal/engine"
+	"github.com/lexdotdev/nocapsec/internal/evidence"
 	"github.com/lexdotdev/nocapsec/internal/oast"
 	"github.com/lexdotdev/nocapsec/pkg/nocapsec"
 )
@@ -35,6 +36,8 @@ func main() {
 		serve(os.Args[2:])
 	case "verify":
 		verify(os.Args[2:])
+	case "doc", "-doc", "--doc":
+		doc(os.Args[2:])
 	default:
 		usage()
 		os.Exit(2)
@@ -42,9 +45,25 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: nocapsec <serve|verify>")
+	fmt.Fprintln(os.Stderr, "usage: nocapsec <serve|verify|doc>")
 	fmt.Fprintln(os.Stderr, "  serve            run the HTTP API + in-process worker pools")
 	fmt.Fprintln(os.Stderr, "  verify <file>    one-shot: verify a single finding and print the report")
+	fmt.Fprintln(os.Stderr, "  doc [type]       print the evidence/proof schema for a finding type (e.g. ssrf)")
+}
+
+// doc prints the schema documentation for a finding type, or lists types when
+// no argument is given.
+func doc(args []string) {
+	if len(args) == 0 {
+		fmt.Print(evidence.DocList())
+		return
+	}
+	out, err := evidence.Doc(args[0])
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(2)
+	}
+	fmt.Println(out)
 }
 
 // wiring holds the injected-dependency flags shared by serve and verify.

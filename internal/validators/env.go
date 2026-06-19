@@ -7,6 +7,7 @@ package validators
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
@@ -74,6 +75,12 @@ type Result struct {
 
 // proofJSON marshals a proof block; marshaling simple structs cannot fail.
 func proofJSON(v any) json.RawMessage { b, _ := json.Marshal(v); return b } //nolint:errchkjson // simple struct
+
+func replaceNonceSlot(s, nonce string) string {
+	s = strings.ReplaceAll(s, "{{nonce}}", nonce)
+	s = strings.ReplaceAll(s, "%7B%7Bnonce%7D%7D", nonce)
+	return strings.ReplaceAll(s, "%7b%7bnonce%7d%7d", nonce)
+}
 
 // Validator verifies a single finding type, registered in init, found by Type.
 type Validator interface {

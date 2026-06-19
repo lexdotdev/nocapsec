@@ -41,7 +41,7 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 	}
 
 	// Inject the per-run nonce so the final URL carries it.
-	ev.Entrypoint.URL = strings.ReplaceAll(ev.Entrypoint.URL, "{{nonce}}", job.Nonce)
+	ev.Entrypoint.URL = replaceNonceSlot(ev.Entrypoint.URL, job.Nonce)
 
 	if rejectScheme(ev.Entrypoint.URL) {
 		return Result{Verdict: verdict.Rejected}, nil
@@ -86,14 +86,11 @@ func evaluateRedirect(
 	target, external policy.Origin,
 	nonce string, maxHops int,
 ) Result {
-	// Need at least one navigation event.
-	if len(r.Navigation) == 0 {
+	if len(r.Navigation) == 0 && len(r.Network) == 0 {
 		return Result{Verdict: verdict.NotReproduced}
 	}
 
-	// [2] First committed origin must equal the target.
-	firstOrigin, ok := policy.ParseOrigin(r.Navigation[0].Origin)
-	if !ok || !firstOrigin.Equal(target) {
+	if !startsAtTarget(r, target) {
 		return Result{Verdict: verdict.NotReproduced}
 	}
 
@@ -118,7 +115,8 @@ func evaluateRedirect(
 	}
 
 	// Require a committed transition FROM target TO external in the nav chain.
-	if !hasOriginTransition(r.Navigation, target, external, maxHops) {
+	if !hasOriginTransition(r.Navigation, target, external, maxHops) &&
+		!hasNetworkOriginTransition(r.Network, target, external, maxHops) {
 		return Result{Verdict: verdict.NotReproduced}
 	}
 
@@ -153,6 +151,20 @@ func formatNavChain(navs []browser.NavEvent) []string {
 	return out
 }
 
+func startsAtTarget(r browser.BrowserResult, target policy.Origin) bool {
+	if len(r.Navigation) > 0 {
+		firstOrigin, ok := policy.ParseOrigin(r.Navigation[0].Origin)
+		if ok && firstOrigin.Equal(target) {
+			return true
+		}
+	}
+	if len(r.Network) == 0 {
+		return false
+	}
+	o, ok := originFromRawURL(r.Network[0].URL)
+	return ok && o.Equal(target)
+}
+
 // hasOriginTransition checks that the navigation events contain a transition
 // from the target origin to the external origin within maxHops.
 func hasOriginTransition(navs []browser.NavEvent, target, external policy.Origin, maxHops int) bool {
@@ -174,6 +186,35 @@ func hasOriginTransition(navs []browser.NavEvent, target, external policy.Origin
 		}
 	}
 	return false
+}
+
+func hasNetworkOriginTransition(events []browser.NetEvent, target, external policy.Origin, maxHops int) bool {
+	seenTarget := false
+	for i, n := range events {
+		if i >= maxHops {
+			return false
+		}
+		o, ok := originFromRawURL(n.URL)
+		if !ok {
+			continue
+		}
+		if o.Equal(target) {
+			seenTarget = true
+			continue
+		}
+		if seenTarget && o.Equal(external) {
+			return true
+		}
+	}
+	return false
+}
+
+func originFromRawURL(raw string) (policy.Origin, bool) {
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return policy.Origin{}, false
+	}
+	return policy.ParseOrigin(u.Scheme + "://" + u.Host)
 }
 
 type redirectEvidence struct {

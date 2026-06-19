@@ -30,7 +30,13 @@ Verify the build:
 ```sh
 ./bin/nocapsec verify path/to/finding.json   # one-shot verification
 ./bin/nocapsec serve                         # HTTP API + worker pools
+./bin/nocapsec doc ssrf.oast                 # print the schema + example for a finding type
 ```
+
+## Using With An LLM
+
+- See [llms.txt](llms.txt) for an LLM-oriented guide to the CLI, HTTP API, evidence rules, and common finding shapes.
+- See [nocapsec skill](nocapsec-skill/SKILL.md) for example of exploiter agent that produces evidence in nocapsec format.
 
 ### Chrome / Chromium
 

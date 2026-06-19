@@ -32,7 +32,7 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	marker := strings.ReplaceAll(proof.ExpectedMarker, "{{nonce}}", job.Nonce)
+	marker := replaceNonceSlot(proof.ExpectedMarker, job.Nonce)
 
 	ownerCreds, err := loadCreds(ctx, env.AuthStore, ev.OwnerAuthStateID)
 	if err != nil {
@@ -47,7 +47,7 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 
 	// 1. Owner creates the canary resource.
 	setupReq := ev.SetupResource
-	setupReq.Body = strings.ReplaceAll(setupReq.Body, "{{nonce}}", job.Nonce)
+	setupReq.Body = replaceNonceSlot(setupReq.Body, job.Nonce)
 	for k, v := range ownerCreds.Headers {
 		setupReq.Headers = append(setupReq.Headers, evidence.Header{Name: k, Value: v})
 	}

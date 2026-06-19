@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sqli.time_based",
+  "description": "Blind SQLi proven by a reproducible latency delta between a low-delay and high-delay payload vs a control.",
+  "x-flags": "(http/timing — no extra flag)",
+  "x-notes": [
+    "requests.control is uninjected; delay_low/delay_high are the same injection with a small vs large sleep.",
+    "Set min_median_delta_ms below your real sleep (e.g. 3500 for a 5s sleep) but above jitter.",
+    "timeout_ms must exceed the high delay. Unstable targets map to inconclusive."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "sqli.time_based" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requests", "vulnerable_parameter"],
+      "properties": {
+        "requests": { "$ref": "#/$defs/delay_requests" },
+        "vulnerable_parameter": { "type": "string" },
+        "expected_low_delay_ms": { "type": "number" },
+        "expected_high_delay_ms": { "type": "number" },
+        "dbms_hint": { "type": "string" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repetitions": { "type": "number" },
+        "randomize_order": { "type": "boolean" },
+        "min_median_delta_ms": { "type": "number" },
+        "max_status_code_drift": { "type": "boolean" },
+        "require_body_similarity": { "type": "boolean" },
+        "timeout_ms": { "type": "number" }
+      }
+    }
+  },
+  "$defs": {
+    "delay_requests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["control", "delay_low", "delay_high"],
+      "properties": {
+        "control": { "$ref": "#/$defs/request" },
+        "delay_low": { "$ref": "#/$defs/request" },
+        "delay_high": { "$ref": "#/$defs/request" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "sqli-timing-id",
+      "type": "sqli.time_based",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "requests": {
+          "control": { "method": "GET", "url": "https://app.example.com/item?id=1" },
+          "delay_low": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%20SLEEP(0)" },
+          "delay_high": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%20SLEEP(5)" }
+        },
+        "vulnerable_parameter": "id",
+        "dbms_hint": "mysql"
+      },
+      "proof": {
+        "repetitions": 5,
+        "randomize_order": true,
+        "min_median_delta_ms": 3500,
+        "require_body_similarity": true,
+        "timeout_ms": 12000
+      }
+    }
+  ]
+}

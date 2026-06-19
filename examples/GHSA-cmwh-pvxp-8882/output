@@ -1,0 +1,23 @@
+{
+  "finding_id": "GHSA-cmwh-pvxp-8882",
+  "type": "xss.reflected",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8092",
+  "proof": {
+    "signal": "javascript_dialog",
+    "execution_origin": "http://127.0.0.1:8092",
+    "message_contains_nonce": true
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://f8d731ab34732d2cd6aace60e41e93d5/evidence/1729085361239bba",
+    "http_exchange": "artifact://f8d731ab34732d2cd6aace60e41e93d5/http_exchange/f04b8cbee33ef0ae",
+    "policy": "artifact://f8d731ab34732d2cd6aace60e41e93d5/policy/8eef63c2e777da6a"
+  },
+  "decided_at": "2026-06-19T19:25:20.514917+03:00"
+}
