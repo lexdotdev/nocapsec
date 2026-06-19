@@ -24,14 +24,11 @@ const (
 	Invalid       = verdict.Invalid
 )
 
-// ErrNotImplemented is returned by the scaffold until the engine is wired.
+// ErrNotImplemented signals a Task dispatched with no Run func.
 var ErrNotImplemented = engine.ErrNotImplemented
 
-// Config holds the engine's policy defaults, concurrency limits, OAST backend,
-// and artifact store.
-//
-// TODO: map public knobs onto engine.Config.
-type Config struct{}
+// Config holds the engine's policy defaults and concurrency limits.
+type Config = engine.Config
 
 // Engine runs the verification pipeline in-process. It is safe for concurrent
 // use: Verify may be called from many goroutines against the shared worker pools.
@@ -40,9 +37,9 @@ type Engine struct {
 }
 
 // New builds an Engine from cfg, wiring policy, validators, and the in-process
-// worker pools (internal/engine). Call Close to drain them.
-func New(_ Config) (*Engine, error) {
-	eng, err := engine.New(engine.Config{})
+// worker pools. Call Close to drain them.
+func New(cfg Config) (*Engine, error) {
+	eng, err := engine.New(cfg)
 	if err != nil {
 		return nil, err
 	}
