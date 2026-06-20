@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "open_redirect",
+  "description": "Open redirect proven by a browser starting on the target origin and landing on an external origin, final URL carrying the nonce.",
+  "x-flags": "-browser",
+  "x-notes": [
+    "Put {{nonce}} in the redirect destination inside entrypoint.url so the final URL is provably yours.",
+    "The external final host AND port must be in the target allowlist, or the navigation is rejected.",
+    "require_initial_target_origin / require_final_external_origin are usually both true."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "open_redirect" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entrypoint", "redirect_parameter", "expected_initial_origin", "expected_final_origin"],
+      "properties": {
+        "entrypoint": { "$ref": "#/$defs/request" },
+        "redirect_parameter": { "type": "string" },
+        "expected_initial_origin": { "type": "string" },
+        "expected_final_origin": { "type": "string" },
+        "redirect_kind": { "type": "string", "description": "e.g. server_or_client" },
+        "max_hops": { "type": "number" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_signal", "require_initial_target_origin", "require_final_external_origin"],
+      "properties": {
+        "expected_signal": { "type": "string", "description": "e.g. browser_final_url_or_oast_http" },
+        "require_initial_target_origin": { "type": "boolean" },
+        "require_final_external_origin": { "type": "boolean" },
+        "timeout_ms": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "open-redirect-next",
+      "type": "open_redirect",
+      "target": {
+        "expected_origin": "http://127.0.0.1:3000",
+        "allowed_hosts": ["127.0.0.1"],
+        "allowed_schemes": ["http"],
+        "allowed_ports": [3000, 39099]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "entrypoint": {
+          "method": "GET",
+          "url": "http://127.0.0.1:3000/login?next=http%3A%2F%2F127.0.0.1%3A39099%2Fnocapsec-{{nonce}}"
+        },
+        "redirect_parameter": "next",
+        "expected_initial_origin": "http://127.0.0.1:3000",
+        "expected_final_origin": "http://127.0.0.1:39099",
+        "redirect_kind": "server_or_client",
+        "max_hops": 5
+      },
+      "proof": {
+        "expected_signal": "browser_final_url_or_oast_http",
+        "require_initial_target_origin": true,
+        "require_final_external_origin": true,
+        "timeout_ms": 8000
+      }
+    }
+  ]
+}

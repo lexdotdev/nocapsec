@@ -1,0 +1,86 @@
+{
+  "$comment": "Shared $defs merged into every per-type finding schema at load time (see schema.go). Edit definitions here once.",
+  "$defs": {
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["method", "url"],
+      "properties": {
+        "method": { "type": "string", "minLength": 1 },
+        "url": { "type": "string", "minLength": 1 },
+        "headers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["name", "value"],
+            "properties": {
+              "name": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        },
+        "body": { "type": "string" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_origin", "allowed_hosts", "allowed_schemes"],
+      "properties": {
+        "expected_origin": { "type": "string", "minLength": 1, "description": "Origin the finding is pinned to, e.g. https://app.example.com" },
+        "allowed_hosts": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "allowed_schemes": { "type": "array", "minItems": 1, "items": { "type": "string" } },
+        "allowed_ports": { "type": "array", "items": { "type": "integer" } }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Auth is referenced, never inlined. Only required/auth_state_id/role are allowed.",
+      "properties": {
+        "required": { "type": "boolean" },
+        "auth_state_id": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "if": { "properties": { "required": { "const": true } }, "required": ["required"] },
+      "then": { "required": ["auth_state_id"] }
+    },
+    "mutation_slots": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "injection_location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "One declared slot. kind=query|form needs name; json_body needs json_pointer. The position must already exist in base_request.",
+      "properties": {
+        "kind": { "enum": ["query", "form", "json_body"] },
+        "name": { "type": "string" },
+        "json_pointer": { "type": "string" }
+      }
+    },
+    "injection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "payloads"],
+      "description": "Engine-owned contrast: one base_request slot, one payload value per differential arm.",
+      "properties": {
+        "location": { "$ref": "#/$defs/injection_location" },
+        "payloads": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
+    "side_effects": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cleanup": { "type": "array", "items": { "$ref": "#/$defs/request" } }
+      }
+    }
+  }
+}

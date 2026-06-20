@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "command_injection.time_based",
+  "description": "Command injection proven by a latency delta from an injected shell sleep (control/low/high).",
+  "x-flags": "(http/timing — no extra flag)",
+  "x-notes": [
+    "The engine builds control/low/high by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "payloads.control is the uninjected value; delay_low/delay_high carry a small vs large shell sleep. kind=query|form needs name; json_body needs json_pointer.",
+    "Set min_median_delta_ms below the real sleep, above noise; floor is 3000. Unstable targets map to inconclusive."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "command_injection.time_based" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "delay_low", "delay_high"]
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repetitions": { "type": "number" },
+        "min_median_delta_ms": { "type": "number" },
+        "require_body_similarity": { "type": "boolean" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "cmdi-timing-ping",
+      "type": "command_injection.time_based",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": { "method": "GET", "url": "https://app.example.com/ping?host=127.0.0.1" },
+        "injection": {
+          "location": { "kind": "query", "name": "host" },
+          "payloads": {
+            "control": "127.0.0.1",
+            "delay_low": "127.0.0.1;sleep 0",
+            "delay_high": "127.0.0.1;sleep 5"
+          }
+        }
+      },
+      "proof": {
+        "repetitions": 5,
+        "min_median_delta_ms": 3500,
+        "require_body_similarity": true
+      }
+    }
+  ]
+}

@@ -1,0 +1,29 @@
+{
+  "finding_id": "GHSA-8v65-47jx-7mfr",
+  "type": "ssrf.oast",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8025",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8025]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8025/proxy?url=http%3A%2F%2F127.0.0.1%3A1%2Fplaceholder"
+    },
+    "injection_location": {
+      "kind": "query",
+      "name": "url"
+    },
+    "expected_protocols": ["http"]
+  },
+  "proof": {
+    "expected_signal": "oast_interaction",
+    "poll_window_seconds": 30,
+    "require_source_not_verifier": true
+  }
+}

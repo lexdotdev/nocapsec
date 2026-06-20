@@ -1,0 +1,10 @@
+{
+  "name": "nocapsec/phpoffice-math-xxe-poc",
+  "description": "Pinned vulnerable phpoffice/math 0.2.0 for GHSA-42hm-pq2f-3r7m XXE repro",
+  "require": { "phpoffice/math": "0.2.0" },
+  "config": {
+    "vendor-dir": "vendor",
+    "audit": { "abandoned": "ignore" }
+  },
+  "policy": { "advisories": { "block": false } }
+}

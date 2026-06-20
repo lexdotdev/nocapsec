@@ -1,0 +1,157 @@
+package browser
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"fmt"
+	"time"
+
+	"github.com/chromedp/chromedp"
+
+	"github.com/lexdotdev/nocapsec/internal/artifacts"
+)
+
+const (
+	defaultTimeoutMS = 10000
+	settleDelay      = 750 * time.Millisecond
+)
+
+// runner drives Chromium via CDP for a BrowserJob.
+type runner struct {
+	proxyURL string
+	execPath string
+	store    artifacts.ArtifactStore
+}
+
+// RunnerOption configures a runner.
+type RunnerOption func(*runner)
+
+// WithProxyURL routes egress via the policy proxy.
+func WithProxyURL(u string) RunnerOption {
+	return func(r *runner) { r.proxyURL = u }
+}
+
+// WithExecPath pins the browser binary.
+func WithExecPath(p string) RunnerOption {
+	return func(r *runner) { r.execPath = p }
+}
+
+// WithArtifactStore enables proof-time capture.
+func WithArtifactStore(s artifacts.ArtifactStore) RunnerOption {
+	return func(r *runner) { r.store = s }
+}
+
+// NewRunner returns a chromedp BrowserRunner.
+func NewRunner(opts ...RunnerOption) BrowserRunner {
+	r := &runner{}
+	for _, o := range opts {
+		o(r)
+	}
+	return r
+}
+
+func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, error) {
+	timeout := time.Duration(job.TimeoutMS) * time.Millisecond
+	if timeout <= 0 {
+		timeout = defaultTimeoutMS * time.Millisecond
+	}
+	ctx, cancel := context.WithTimeout(parent, timeout)
+	defer cancel()
+
+	taskCtx, cleanup, err := ephemeralContext(ctx, r.proxyURL, r.execPath)
+	if err != nil {
+		return BrowserResult{}, fmt.Errorf("browser: ephemeral context: %w", err)
+	}
+	defer cleanup()
+
+	ec := &eventCollector{}
+	ec.attach(taskCtx)
+
+	entryURL := job.Entrypoint.URL
+	if err := chromedp.Run(taskCtx, chromedp.Navigate(entryURL)); err != nil {
+		return BrowserResult{}, fmt.Errorf("browser: navigate: %w", err)
+	}
+
+	if err := chromedp.Run(taskCtx, waitAction(job.WaitMode)); err != nil {
+		return BrowserResult{}, fmt.Errorf("browser: wait: %w", err)
+	}
+
+	for _, act := range job.PostLoad {
+		if err := chromedp.Run(taskCtx, runAction(act)); err != nil {
+			return BrowserResult{}, fmt.Errorf("browser: post-load action %q: %w", act.Kind, err)
+		}
+	}
+
+	// Let async events settle before snapshotting.
+	_ = chromedp.Run(taskCtx, chromedp.Sleep(settleDelay)) // best-effort settle
+
+	navs, dialogs, console, netEvts := ec.snapshot()
+
+	finalURL := entryURL
+	if len(navs) > 0 {
+		finalURL = navs[len(navs)-1].URL
+	}
+
+	result := BrowserResult{
+		Navigation: navs,
+		Dialogs:    dialogs,
+		Console:    console,
+		Network:    netEvts,
+		FinalURL:   finalURL,
+	}
+
+	if hasProofSignal(job, dialogs, console) {
+		jobID := generateJobID()
+		result.ScreenshotRef, result.DOMSnapshotRef = captureArtifacts(taskCtx, r.store, jobID)
+	}
+
+	return result, nil
+}
+
+// hasProofSignal reports an accepted signal.
+func hasProofSignal(job BrowserJob, dialogs []DialogEvent, console []ConsoleEvent) bool {
+	for _, sig := range job.AcceptSignals {
+		switch sig {
+		case "javascript_dialog":
+			for _, d := range dialogs {
+				if !d.FromVerifierHook {
+					return true
+				}
+			}
+		case "console_log":
+			if len(console) > 0 {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func waitAction(_ string) chromedp.Action {
+	return chromedp.WaitReady("body", chromedp.ByQuery)
+}
+
+// runAction interprets a post-load Action.
+func runAction(act Action) chromedp.Action {
+	switch act.Kind {
+	case "click":
+		sel := act.Args["selector"]
+		return chromedp.Click(sel, chromedp.ByQuery)
+	case "wait_visible":
+		sel := act.Args["selector"]
+		return chromedp.WaitVisible(sel, chromedp.ByQuery)
+	case "sleep":
+		return chromedp.Sleep(500 * time.Millisecond)
+	default:
+		return chromedp.ActionFunc(func(context.Context) error {
+			return fmt.Errorf("browser: unknown action kind %q", act.Kind)
+		})
+	}
+}
+
+func generateJobID() string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return hex.EncodeToString(b)
+}

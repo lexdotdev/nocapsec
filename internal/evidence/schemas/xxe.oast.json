@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "xxe.oast",
+  "description": "XXE proven by a server-side OAST callback when the parser fetches an external entity URL.",
+  "x-flags": "-oast",
+  "x-notes": [
+    "evidence.mutation_slots.oast_url is typically \"xml_external_entity_url\" — the engine replaces the FIRST http(s):// URL in the XML body with the OAST URL.",
+    "The XML body must already contain a placeholder http(s):// URL for the engine to swap.",
+    "Source attribution is always required; secure parsers (entities disabled) yield not_reproduced."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "xxe.oast" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "mutation_slots"],
+      "properties": {
+        "request": { "$ref": "#/$defs/request" },
+        "mutation_slots": {
+          "type": "object",
+          "required": ["oast_url"],
+          "additionalProperties": { "type": "string" },
+          "description": "Must contain oast_url -> typically \"xml_external_entity_url\"."
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_signal", "poll_window_seconds"],
+      "properties": {
+        "expected_signal": { "type": "string", "description": "e.g. oast_interaction" },
+        "poll_window_seconds": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "xxe-import",
+      "type": "xxe.oast",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "request": {
+          "method": "POST",
+          "url": "https://app.example.com/import",
+          "headers": [{ "name": "content-type", "value": "application/xml" }],
+          "body": "<?xml version=\"1.0\"?><!DOCTYPE r [<!ENTITY x SYSTEM \"http://placeholder.invalid/x\">]><r>&x;</r>"
+        },
+        "mutation_slots": { "oast_url": "xml_external_entity_url" }
+      },
+      "proof": {
+        "expected_signal": "oast_interaction",
+        "poll_window_seconds": 60
+      }
+    }
+  ]
+}

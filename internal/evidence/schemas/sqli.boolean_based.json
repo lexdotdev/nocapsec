@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sqli.boolean_based",
+  "description": "Blind SQLi proven by a true-condition response matching baseline and a false-condition response stably differing.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "The engine builds baseline/true/false by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "kind=query|form needs name; json_body needs json_pointer. For query the param must already be in base_request's URL.",
+    "compare values: status, body_hash_fuzzy, content_length_bucket, semantic_markers. The engine always compares at least {status, body_hash_fuzzy}; client compare can only add strictness."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "sqli.boolean_based" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["baseline", "true_condition", "false_condition"]
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_true_similarity_to_baseline", "expected_false_difference", "compare", "repetitions"],
+      "properties": {
+        "expected_true_similarity_to_baseline": { "type": "boolean" },
+        "expected_false_difference": { "type": "boolean" },
+        "compare": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "enum": ["status", "body_hash_fuzzy", "content_length_bucket", "semantic_markers"] }
+        },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "sqli-boolean-id",
+      "type": "sqli.boolean_based",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": { "method": "GET", "url": "https://app.example.com/item?id=1" },
+        "injection": {
+          "location": { "kind": "query", "name": "id" },
+          "payloads": {
+            "baseline": "1",
+            "true_condition": "1 AND 1=1",
+            "false_condition": "1 AND 1=2"
+          }
+        }
+      },
+      "proof": {
+        "expected_true_similarity_to_baseline": true,
+        "expected_false_difference": true,
+        "compare": ["status", "body_hash_fuzzy"],
+        "repetitions": 3
+      }
+    }
+  ]
+}

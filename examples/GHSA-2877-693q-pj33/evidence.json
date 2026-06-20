@@ -1,0 +1,29 @@
+{
+  "finding_id": "GHSA-2877-693q-pj33",
+  "type": "command_injection.oast",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8095",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8095]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "request": {
+      "method": "POST",
+      "url": "http://127.0.0.1:8095/ping",
+      "headers": [
+        { "name": "content-type", "value": "application/x-www-form-urlencoded" }
+      ],
+      "body": "host=127.0.0.1"
+    },
+    "mutation_slots": {
+      "oast_host": "host"
+    }
+  },
+  "proof": {
+    "expected_signal": "oast_interaction"
+  }
+}

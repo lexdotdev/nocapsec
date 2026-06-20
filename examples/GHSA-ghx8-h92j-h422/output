@@ -1,0 +1,27 @@
+{
+  "finding_id": "GHSA-ghx8-h92j-h422",
+  "type": "sqli.boolean_based",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8990",
+  "proof": {
+    "compare": [
+      "status",
+      "body_hash_fuzzy"
+    ],
+    "repetitions": 3,
+    "true_similar_to_baseline": true,
+    "false_differs_from_baseline": true
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://b8b422481322bb5a2011fb81a98d3b7e/evidence/236c8cfed55825ce",
+    "http_exchange": "artifact://b8b422481322bb5a2011fb81a98d3b7e/http_exchange/b19c49746f5a083e",
+    "policy": "artifact://b8b422481322bb5a2011fb81a98d3b7e/policy/d86e1a9e4bc180f4"
+  },
+  "decided_at": "2026-06-19T23:56:44.04837+03:00"
+}

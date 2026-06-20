@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sqli.time_based",
+  "description": "Blind SQLi proven by a reproducible latency delta between a low-delay and high-delay payload vs a control.",
+  "x-flags": "(http/timing — no extra flag)",
+  "x-notes": [
+    "The engine builds control/low/high by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "payloads.control is the uninjected value; delay_low/delay_high carry a small vs large sleep. kind=query|form needs name; json_body needs json_pointer.",
+    "Set min_median_delta_ms below your real sleep (e.g. 3500 for a 5s sleep) but above jitter; floor is 3000.",
+    "timeout_ms must exceed the high delay. Unstable targets map to inconclusive."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "sqli.time_based" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "delay_low", "delay_high"]
+            }
+          }
+        },
+        "expected_low_delay_ms": { "type": "number" },
+        "expected_high_delay_ms": { "type": "number" },
+        "dbms_hint": { "type": "string" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "repetitions": { "type": "number" },
+        "randomize_order": { "type": "boolean" },
+        "min_median_delta_ms": { "type": "number" },
+        "max_status_code_drift": { "type": "boolean" },
+        "require_body_similarity": { "type": "boolean" },
+        "timeout_ms": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "sqli-timing-id",
+      "type": "sqli.time_based",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": { "method": "GET", "url": "https://app.example.com/item?id=1" },
+        "injection": {
+          "location": { "kind": "query", "name": "id" },
+          "payloads": {
+            "control": "1",
+            "delay_low": "1 AND SLEEP(0)",
+            "delay_high": "1 AND SLEEP(5)"
+          }
+        },
+        "dbms_hint": "mysql"
+      },
+      "proof": {
+        "repetitions": 5,
+        "randomize_order": true,
+        "min_median_delta_ms": 3500,
+        "require_body_similarity": true,
+        "timeout_ms": 12000
+      }
+    }
+  ]
+}

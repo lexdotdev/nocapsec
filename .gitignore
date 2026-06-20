@@ -2,3 +2,12 @@
 .claude
 specs
 AGENTS.md
+.DS_Store
+bin
+
+# Vendored vulnerable dependencies for examples (install per each README)
+examples/*/app/node_modules/
+examples/*/app/vendor/
+examples/*/app/.venv/
+examples/*/app/composer.lock
+examples/*/app/package-lock.json

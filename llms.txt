@@ -1,0 +1,280 @@
+# nocapsec LLM Guide
+
+nocapsec is a proof engine for security findings. It validates one structured
+finding, replays the supplied evidence under policy, and returns one verdict:
+`verified`, `not_reproduced`, `inconclusive`, `rejected`, or `invalid`.
+
+It is not a scanner. Do not ask nocapsec to discover issues. Give it exact
+evidence: URLs, methods, headers, bodies, controls, and proof expectations.
+
+## Operating Modes
+
+### CLI
+
+Build:
+
+```sh
+go build -o bin/nocapsec ./cmd/nocapsec
+```
+
+Verify one finding:
+
+```sh
+bin/nocapsec verify [flags] finding.json
+```
+
+Print the JSON Schema (draft 2020-12) and a runnable example for a finding type. This is the
+exact document the engine validates against, so it never drifts:
+
+```sh
+bin/nocapsec doc           # list all finding types
+bin/nocapsec doc ssrf.oast # schema + example for one type (full type id)
+```
+
+Useful flags:
+
+- `-browser`: enable Chrome/Chromium-backed validators such as XSS and open redirect.
+- `-chrome-path /path/to/chrome`: explicit browser path. `NOCAPSEC_CHROME_PATH` also works.
+- `-oast`: start the embedded OAST receiver for SSRF, blind XSS, XXE, and OAST command-injection proofs.
+- `-internal`: allow internal IP ranges for intentional local or intranet assessment.
+- `-authstate auth.json`: load referenced credentials for auth-backed validators.
+- `-config config.json`: load JSON config.
+
+Example:
+
+```sh
+bin/nocapsec verify -browser finding.json
+bin/nocapsec verify -oast -internal ssrf.json
+```
+
+The CLI prints the final report as JSON to stdout.
+
+### HTTP Service
+
+Start:
+
+```sh
+bin/nocapsec serve [flags]
+```
+
+Default listen address is `:8080`. Override with `-addr` or
+`NOCAPSEC_LISTEN_ADDR`.
+
+Submit a finding:
+
+```sh
+curl -sS -X POST http://127.0.0.1:8080/verify \
+  -H 'content-type: application/json' \
+  --data-binary @finding.json
+```
+
+Accepted jobs return:
+
+```json
+{"job_id":"<id>","status":"accepted"}
+```
+
+Poll the report:
+
+```sh
+curl -sS http://127.0.0.1:8080/verify/<id>
+```
+
+List artifact references:
+
+```sh
+curl -sS http://127.0.0.1:8080/verify/<id>/artifacts
+```
+
+Malformed or insufficient evidence returns HTTP 422 with `verdict: "invalid"`
+and a stable `reason`.
+
+## Evidence Rules For LLMs
+
+- Output JSON only when asked for nocapsec evidence.
+- Use exact requests. Do not describe reproduction steps in prose inside JSON.
+- Do not include raw credentials. Use `auth.auth_state_id`; pass credentials via `-authstate`.
+- Keep host, scheme, method, parameter locations, and payload syntax explicit.
+- Use mutation placeholders only where the proof rule allows them, such as `{{nonce}}`.
+- Add negative controls for differential proof types.
+- Set `target.allowed_hosts`, `target.allowed_schemes`, and `target.allowed_ports` narrowly.
+- For local testing, include `-internal` when the target is loopback or a private network.
+
+## Finding Envelope
+
+Every finding uses this top-level shape:
+
+```json
+{
+  "finding_id": "unique-id",
+  "type": "xss.reflected",
+  "target": {
+    "expected_origin": "http://127.0.0.1:3000",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [3000]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {},
+  "proof": {},
+  "side_effects": {
+    "cleanup": []
+  }
+}
+```
+
+## Common Evidence Shapes
+
+### Reflected XSS
+
+Requires `-browser`.
+
+```json
+{
+  "finding_id": "xss-demo",
+  "type": "xss.reflected",
+  "target": {
+    "expected_origin": "http://127.0.0.1:3000",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [3000]
+  },
+  "auth": { "required": false },
+  "evidence": {
+    "entrypoint": {
+      "method": "GET",
+      "url": "http://127.0.0.1:3000/search?q=%3Cscript%3Ealert(%22nocapsec-{{nonce}}%22)%3C%2Fscript%3E"
+    },
+    "vulnerable_parameter": "q",
+    "payload_marker": "nocapsec-{{nonce}}",
+    "trigger": {
+      "kind": "browser_navigate",
+      "wait": "load_or_network_idle",
+      "post_load_actions": []
+    }
+  },
+  "proof": {
+    "accepted_signals": ["javascript_dialog"],
+    "expected_message_contains": "nocapsec-{{nonce}}",
+    "expected_execution_origin": "http://127.0.0.1:3000",
+    "allow_iframe_execution": false,
+    "timeout_ms": 7000
+  }
+}
+```
+
+### Open Redirect
+
+Requires `-browser`. The final origin must be controlled by the verifier setup,
+such as a callback host or a local listener you start before verification.
+
+```json
+{
+  "finding_id": "open-redirect-demo",
+  "type": "open_redirect",
+  "target": {
+    "expected_origin": "http://127.0.0.1:3000",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [3000]
+  },
+  "auth": { "required": false },
+  "evidence": {
+    "entrypoint": {
+      "method": "GET",
+      "url": "http://127.0.0.1:3000/login?next=http://127.0.0.1:39099/nocapsec-{{nonce}}"
+    },
+    "redirect_parameter": "next",
+    "expected_initial_origin": "http://127.0.0.1:3000",
+    "expected_final_origin": "http://127.0.0.1:39099",
+    "redirect_kind": "server_or_client",
+    "max_hops": 5
+  },
+  "proof": {
+    "expected_signal": "browser_final_url_or_oast_http",
+    "require_initial_target_origin": true,
+    "require_final_external_origin": true,
+    "timeout_ms": 8000
+  }
+}
+```
+
+### SSRF With OAST
+
+Requires `-oast`. Use `-internal` for loopback/private targets.
+
+```json
+{
+  "finding_id": "ssrf-demo",
+  "type": "ssrf.oast",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8025",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8025]
+  },
+  "auth": { "required": false },
+  "evidence": {
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8025/proxy?url=http%3A%2F%2Fplaceholder.invalid"
+    },
+    "injection_location": {
+      "kind": "query",
+      "name": "url"
+    },
+    "expected_protocols": ["http"]
+  },
+  "proof": {
+    "expected_signal": "oast_interaction",
+    "poll_window_seconds": 30,
+    "require_source_not_verifier": true
+  }
+}
+```
+
+For JSON-body SSRF, use:
+
+```json
+"injection_location": {
+  "kind": "json_body",
+  "json_pointer": "/url"
+}
+```
+
+## Auth State
+
+When `auth.required` is true, the finding references an `auth_state_id`.
+Pass credentials separately:
+
+```sh
+bin/nocapsec verify -authstate auth.json finding.json
+```
+
+`auth.json` is an array:
+
+```json
+[
+  {
+    "state": {
+      "id": "user-session",
+      "kind": "http_cookie_jar",
+      "allowed_origins": ["https://app.example.com"],
+      "role": "user"
+    },
+    "credentials": {
+      "cookies": []
+    }
+  }
+]
+```
+
+## Result Interpretation
+
+- `verified`: the deterministic proof rule passed.
+- `not_reproduced`: the verifier ran but did not observe the required signal.
+- `inconclusive`: infrastructure failed, timed out, or lacked a needed capability.
+- `rejected`: policy blocked the request, origin, scheme, DNS, IP range, or redirect.
+- `invalid`: the evidence JSON was malformed, incomplete, had unknown fields, or had dangling mutation slots.

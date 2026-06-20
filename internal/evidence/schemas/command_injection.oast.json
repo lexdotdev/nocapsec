@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "command_injection.oast",
+  "description": "Command injection proven out-of-band: the injected command reaches an OAST host the engine controls.",
+  "x-flags": "-oast",
+  "x-notes": [
+    "evidence.mutation_slots.oast_host names a form field in request.body (or \"body.<field>\") where the OAST host is written.",
+    "Your payload around the field must turn the injected host into a running command (e.g. `; nslookup <host>`).",
+    "Source attribution is required — a callback not from the target infra does not count."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "command_injection.oast" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "mutation_slots"],
+      "properties": {
+        "request": { "$ref": "#/$defs/request" },
+        "mutation_slots": {
+          "type": "object",
+          "required": ["oast_host"],
+          "additionalProperties": { "type": "string" },
+          "description": "Must contain oast_host -> the body field the OAST host is written into."
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_signal"],
+      "properties": {
+        "expected_signal": { "type": "string", "description": "e.g. oast_interaction" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "cmdi-oast-host",
+      "type": "command_injection.oast",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "request": {
+          "method": "POST",
+          "url": "https://app.example.com/tools/lookup",
+          "headers": [{ "name": "content-type", "value": "application/x-www-form-urlencoded" }],
+          "body": "domain=placeholder"
+        },
+        "mutation_slots": { "oast_host": "domain" }
+      },
+      "proof": { "expected_signal": "oast_interaction" }
+    }
+  ]
+}
