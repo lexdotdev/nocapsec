@@ -1,0 +1,23 @@
+{
+  "finding_id": "GHSA-5ghc-8wr3-788c",
+  "type": "idor.read",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8001",
+  "proof": {
+    "matched_marker": "NOCAPSEC_CANARY_147318702c92b151df6e2c9ef29986b4",
+    "attacker_status": 200,
+    "owner_status": 200
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://b1c490e9056f545ccf098873348eddd8/evidence/de6a3bba6457b43b",
+    "http_exchange": "artifact://b1c490e9056f545ccf098873348eddd8/http_exchange/bc711f6664e5a548",
+    "policy": "artifact://b1c490e9056f545ccf098873348eddd8/policy/03c14218dd891220"
+  },
+  "decided_at": "2026-06-19T23:46:56.966877+03:00"
+}

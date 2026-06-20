@@ -18,14 +18,23 @@ type Receiver struct {
 	advertiseHost string
 	clock         Clock
 
-	httpSrv  *http.Server
-	dnsConn  *net.UDPConn
-	httpAddr string
-	dnsAddr  string
+	httpSrv      *http.Server
+	dnsConn      *net.UDPConn
+	httpAddr     string
+	dnsAddr      string
+	callbackHost string // optional hostname for callback URLs (port kept from httpAddr)
 
 	mu           sync.Mutex
 	interactions map[string][]Interaction // keyed by correlationID
 }
+
+// SetCallbackHost overrides the host used in HTTP callback URLs while keeping
+// the receiver's bound port. Use it when the target rejects raw-IP callback
+// URLs (e.g. an SSRF guard that only permits TLD'd hostnames); point a
+// loopback-resolving name such as oast.localtest.me at the receiver. Real OAST
+// backends (interactsh) hand out domains rather than bare IPs for the same
+// reason. Call after Start, before allocating interactions.
+func (r *Receiver) SetCallbackHost(host string) { r.callbackHost = host }
 
 // NewReceiver builds an embedded receiver. domain is the callback suffix;
 // advertiseHost is the A-record reply and the host in callback URLs.
@@ -80,7 +89,13 @@ func (r *Receiver) NewInteraction(_ context.Context, purpose string) (*OASTToken
 		return nil, err
 	}
 	now := r.clock.Now()
-	cb := fmt.Sprintf("http://%s/cb/%s", r.httpAddr, corrID)
+	cbHost := r.httpAddr
+	if r.callbackHost != "" {
+		if _, port, err := net.SplitHostPort(r.httpAddr); err == nil {
+			cbHost = net.JoinHostPort(r.callbackHost, port)
+		}
+	}
+	cb := fmt.Sprintf("http://%s/cb/%s", cbHost, corrID)
 	return &OASTToken{
 		CorrelationID:     corrID,
 		Domain:            corrID + "." + r.domain,

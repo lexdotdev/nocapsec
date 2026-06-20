@@ -1,0 +1,7 @@
+{
+  "name": "link-preview-js-poc",
+  "version": "1.0.0",
+  "private": true,
+  "type": "commonjs",
+  "dependencies": { "link-preview-js": "4.0.0" }
+}

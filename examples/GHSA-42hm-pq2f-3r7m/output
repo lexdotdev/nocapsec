@@ -1,0 +1,24 @@
+{
+  "finding_id": "GHSA-42hm-pq2f-3r7m",
+  "type": "xxe.oast",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8087",
+  "proof": {
+    "correlation_id": "dc93ad3983f68e8d38d3",
+    "protocol": "http",
+    "source_ip": "127.0.0.1",
+    "attributed_to": "target_infra"
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://f4a6687c80d85966701928a1fbc46acc/evidence/8fa0dfb32ded1697",
+    "http_exchange": "artifact://f4a6687c80d85966701928a1fbc46acc/http_exchange/3c347eba56ed8f6c",
+    "policy": "artifact://f4a6687c80d85966701928a1fbc46acc/policy/aabdf128d5628ed1"
+  },
+  "decided_at": "2026-06-19T23:02:03.737434+03:00"
+}

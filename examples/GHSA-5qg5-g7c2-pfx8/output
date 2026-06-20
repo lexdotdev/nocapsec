@@ -1,0 +1,25 @@
+{
+  "finding_id": "GHSA-5qg5-g7c2-pfx8",
+  "type": "command_injection.time_based",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:3009",
+  "proof": {
+    "median_low_ms": 13,
+    "median_high_ms": 5021,
+    "delta_ms": 5008,
+    "threshold_ms": 3500,
+    "repetitions": 4
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://6850d516a9f96ace6937808f487da975/evidence/ab6f20b9d98c91dd",
+    "http_exchange": "artifact://6850d516a9f96ace6937808f487da975/http_exchange/fcf7171b68b3c3c1",
+    "policy": "artifact://6850d516a9f96ace6937808f487da975/policy/76a359dfe07bf693"
+  },
+  "decided_at": "2026-06-19T22:59:13.137921+03:00"
+}

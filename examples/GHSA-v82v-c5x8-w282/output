@@ -1,0 +1,23 @@
+{
+  "finding_id": "GHSA-v82v-c5x8-w282",
+  "type": "xss.stored",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8088",
+  "proof": {
+    "signal": "javascript_dialog",
+    "execution_origin": "http://127.0.0.1:8088",
+    "message_contains_nonce": true
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://ca2ba7aec4b7ad46a8f38daf5ab53c70/evidence/820578b8dfa12337",
+    "http_exchange": "artifact://ca2ba7aec4b7ad46a8f38daf5ab53c70/http_exchange/a7d183a9d78c7136",
+    "policy": "artifact://ca2ba7aec4b7ad46a8f38daf5ab53c70/policy/a746d6c27554c65c"
+  },
+  "decided_at": "2026-06-19T23:16:51.000664+03:00"
+}

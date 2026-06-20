@@ -1,0 +1,22 @@
+{
+  "finding_id": "GHSA-4gp8-rjrq-ch6q",
+  "type": "xss.blind",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:8099",
+  "proof": {
+    "correlation_id": "a28e3005fe001df024cd",
+    "protocol": "http"
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://655786887c7df0a7ace91f233f7aa384/evidence/c2b4309b7e73e16e",
+    "http_exchange": "artifact://655786887c7df0a7ace91f233f7aa384/http_exchange/c77df691c76a0a0e",
+    "policy": "artifact://655786887c7df0a7ace91f233f7aa384/policy/70319f70d4b797e7"
+  },
+  "decided_at": "2026-06-19T23:06:48.885176+03:00"
+}
