@@ -59,6 +59,9 @@ In another terminal from the `nocapsec` repo:
 go run ./examples/GHSA-ghx8-h92j-h422
 ```
 
-The example replays the baseline, the `1=1` (true) and the `1=2` (false) requests,
-repeated for stability, and compares response fingerprints. A verified report
-(`true_similar_to_baseline`, `false_differs_from_baseline`) proves the boolean oracle.
+The evidence is one `base_request` plus an `injection` slot (`query` form field)
+and three payload values (baseline / `WHERE 1=1` / `WHERE 1=2`). The engine builds
+all three arms by planting each value into that one slot, replays them (repeated for
+stability), and compares response fingerprints on at least `{status, body_hash_fuzzy}`.
+A verified report (`true_similar_to_baseline`, `false_differs_from_baseline`) proves
+the boolean oracle.

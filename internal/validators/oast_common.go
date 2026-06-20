@@ -189,33 +189,18 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 		oastValue = tok.Domain
 	}
 
-	out := req
-
-	if strings.HasPrefix(slotTarget, "body.") {
-		fieldName := slotTarget[len("body."):]
-		patched, err := injectFormField(req.Body, fieldName, oastValue)
-		if err != nil {
-			return evidence.Request{}, err
-		}
-		out.Body = patched
-		return out, nil
-	}
-
 	if slotTarget == "xml_external_entity_url" {
 		if req.Body == "" {
 			return evidence.Request{}, fmt.Errorf("empty body for XML entity injection")
 		}
+		out := req
 		out.Body = replaceXMLEntityURL(req.Body, oastValue)
 		return out, nil
 	}
 
-	// Plain field name: form-encoded field.
-	patched, err := injectFormField(req.Body, slotTarget, oastValue)
-	if err != nil {
-		return evidence.Request{}, err
-	}
-	out.Body = patched
-	return out, nil
+	// "body.<field>" or a plain field name: a form-encoded body field.
+	field := strings.TrimPrefix(slotTarget, "body.")
+	return injectValue(req, InjectionLocation{Kind: kindForm, Name: field}, oastValue)
 }
 
 // injectFormField replaces or inserts a field in a URL-encoded form body.

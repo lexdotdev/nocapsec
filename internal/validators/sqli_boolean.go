@@ -24,10 +24,18 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 		return Result{Verdict: verdict.Invalid}, nil //nolint:nilerr // schema mismatch -> invalid
 	}
 
-	dims := ParseDimensions(proof.Compare)
-	if len(dims) == 0 {
+	if ev.BaseRequest.Method == "" || ev.BaseRequest.URL == "" || !ev.Injection.Location.valid() {
 		return Result{Verdict: verdict.Invalid}, nil
 	}
+	arms, ok := buildBooleanArms(ev)
+	if !ok {
+		return Result{Verdict: verdict.Invalid}, nil
+	}
+
+	// Engine-owned floor: always compare at least status + body_hash_fuzzy so a
+	// client cannot weaken the proof bar below it.
+	dims := unionDims(ParseDimensions(proof.Compare), DimStatus, DimBodyHashFuzzy)
+
 	reps := proof.Repetitions
 	if reps < 1 {
 		reps = 2
@@ -38,7 +46,7 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 	var baselineRedirects []string
 	// Run multiple repetitions to check stability.
 	for i := range reps {
-		caps, err := replayTriple(ctx, bundle, ev)
+		caps, err := replayTriple(ctx, bundle, arms)
 		if err != nil {
 			return Result{Verdict: verdict.Inconclusive}, err
 		}
@@ -65,7 +73,7 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 	return Result{
 		Verdict: verdict.Verified,
 		Proof: proofJSON(sqliBooleanProofBlock{
-			Compare:                  proof.Compare,
+			Compare:                  dimStrings(dims),
 			Repetitions:              reps,
 			TrueSimilarToBaseline:    true,
 			FalseDiffersFromBaseline: true,
@@ -81,22 +89,54 @@ type sqliBooleanProofBlock struct {
 	FalseDiffersFromBaseline bool     `json:"false_differs_from_baseline"`
 }
 
+// booleanArms holds the three request arms the engine builds from base_request.
+type booleanArms struct {
+	baseline  evidence.Request
+	trueCond  evidence.Request
+	falseCond evidence.Request
+}
+
+// buildBooleanArms plants each payload value into the declared slot of
+// base_request. A missing payload key or an inject error means invalid.
+func buildBooleanArms(ev sqliBooleanEvidence) (booleanArms, bool) {
+	loc := ev.Injection.Location
+	baseVal, ok1 := ev.Injection.Payloads["baseline"]
+	trueVal, ok2 := ev.Injection.Payloads["true_condition"]
+	falseVal, ok3 := ev.Injection.Payloads["false_condition"]
+	if !ok1 || !ok2 || !ok3 {
+		return booleanArms{}, false
+	}
+	baseline, err := injectValue(ev.BaseRequest, loc, baseVal)
+	if err != nil {
+		return booleanArms{}, false
+	}
+	trueReq, err := injectValue(ev.BaseRequest, loc, trueVal)
+	if err != nil {
+		return booleanArms{}, false
+	}
+	falseReq, err := injectValue(ev.BaseRequest, loc, falseVal)
+	if err != nil {
+		return booleanArms{}, false
+	}
+	return booleanArms{baseline: baseline, trueCond: trueReq, falseCond: falseReq}, true
+}
+
 type booleanCaptures struct {
 	baseline  *httpx.Capture
 	trueCond  *httpx.Capture
 	falseCond *httpx.Capture
 }
 
-func replayTriple(ctx context.Context, bundle *httpx.ClientBundle, ev sqliBooleanEvidence) (booleanCaptures, error) {
-	baseline, err := httpx.Replay(ctx, bundle, ev.Requests.Baseline)
+func replayTriple(ctx context.Context, bundle *httpx.ClientBundle, arms booleanArms) (booleanCaptures, error) {
+	baseline, err := httpx.Replay(ctx, bundle, arms.baseline)
 	if err != nil {
 		return booleanCaptures{}, err
 	}
-	trueCap, err := httpx.Replay(ctx, bundle, ev.Requests.TrueCondition)
+	trueCap, err := httpx.Replay(ctx, bundle, arms.trueCond)
 	if err != nil {
 		return booleanCaptures{}, err
 	}
-	falseCap, err := httpx.Replay(ctx, bundle, ev.Requests.FalseCondition)
+	falseCap, err := httpx.Replay(ctx, bundle, arms.falseCond)
 	if err != nil {
 		return booleanCaptures{}, err
 	}
@@ -104,12 +144,8 @@ func replayTriple(ctx context.Context, bundle *httpx.ClientBundle, ev sqliBoolea
 }
 
 type sqliBooleanEvidence struct {
-	Requests struct {
-		Baseline       evidence.Request `json:"baseline"`
-		TrueCondition  evidence.Request `json:"true_condition"`
-		FalseCondition evidence.Request `json:"false_condition"`
-	} `json:"requests"`
-	VulnerableParam string `json:"vulnerable_parameter"`
+	BaseRequest evidence.Request  `json:"base_request"`
+	Injection   injectionEvidence `json:"injection"`
 }
 
 type sqliBooleanProof struct {

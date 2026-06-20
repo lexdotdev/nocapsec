@@ -19,12 +19,15 @@ func buildBooleanJob(t *testing.T, port int) validators.Job {
 	ps := strconv.Itoa(port)
 	base := "http://app.example.com:" + ps
 	ev, _ := json.Marshal(map[string]any{
-		"requests": map[string]any{
-			"baseline":        map[string]string{"method": "GET", "url": base + "/item?id=1"},
-			"true_condition":  map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=1"},
-			"false_condition": map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=0"},
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": "id"},
+			"payloads": map[string]string{
+				"baseline":        "1",
+				"true_condition":  "1 AND 1=1",
+				"false_condition": "1 AND 1=0",
+			},
 		},
-		"vulnerable_parameter": "id",
 	})
 	proof, _ := json.Marshal(map[string]any{
 		"expected_true_similarity_to_baseline": true,
@@ -178,12 +181,15 @@ func TestSQLiBooleanStatusCodeDiff(t *testing.T) {
 	base := "http://app.example.com:" + ps
 
 	ev, _ := json.Marshal(map[string]any{
-		"requests": map[string]any{
-			"baseline":        map[string]string{"method": "GET", "url": base + "/item?id=1"},
-			"true_condition":  map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=1"},
-			"false_condition": map[string]string{"method": "GET", "url": base + "/item?id=1+AND+1=0"},
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": "id"},
+			"payloads": map[string]string{
+				"baseline":        "1",
+				"true_condition":  "1 AND 1=1",
+				"false_condition": "1 AND 1=0",
+			},
 		},
-		"vulnerable_parameter": "id",
 	})
 	proof, _ := json.Marshal(map[string]any{
 		"expected_true_similarity_to_baseline": true,
@@ -271,5 +277,126 @@ func TestSQLiBooleanDynamicContentMasked(t *testing.T) {
 	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (dynamic tokens masked)", result)
+	}
+}
+
+// Cheat resistance: the engine builds every arm from one base_request, so the
+// declared injection location must exist there. A location absent from
+// base_request is invalid — there is no second request a client could smuggle.
+func TestSQLiBooleanInjectionLocationAbsent(t *testing.T) {
+	srv := httptest.NewServer(booleanSQLiHandler())
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	// base_request has no "id" query parameter, but the injection names it.
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]string{"method": "GET", "url": base + "/item"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": "id"},
+			"payloads": map[string]string{
+				"baseline":        "1",
+				"true_condition":  "1 AND 1=1",
+				"false_condition": "1 AND 1=0",
+			},
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_true_similarity_to_baseline": true,
+		"expected_false_difference":            true,
+		"compare":                              []string{"status", "body_hash_fuzzy"},
+		"repetitions":                          2,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-loc-absent",
+			Type:      "sqli.boolean_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.boolean_based")
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Invalid {
+		t.Fatalf("verdict = %q, want invalid (injection location absent from base_request)", res.Verdict)
+	}
+}
+
+// Compare floor: the engine always compares at least status + body_hash_fuzzy.
+// A client passing compare:["status"] still detects a body-only difference
+// because the floor forces body_hash_fuzzy in.
+func TestSQLiBooleanCompareFloor(t *testing.T) {
+	// baseline/true share one body; false differs ONLY in the body, same status.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		if r.URL.Query().Get("id") == "1 AND 1=0" {
+			_, _ = w.Write([]byte(`<html><title>No Results</title><p>No products found.</p></html>`))
+			return
+		}
+		_, _ = w.Write([]byte(`<html><title>Product</title><p>Widget A - $19.99</p></html>`))
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": "id"},
+			"payloads": map[string]string{
+				"baseline":        "1",
+				"true_condition":  "1 AND 1=1",
+				"false_condition": "1 AND 1=0",
+			},
+		},
+	})
+	// Client asks for status alone; the floor still forces body_hash_fuzzy, so
+	// the body-only difference is detected and the proof holds.
+	proof, _ := json.Marshal(map[string]any{
+		"expected_true_similarity_to_baseline": true,
+		"expected_false_difference":            true,
+		"compare":                              []string{"status"},
+		"repetitions":                          2,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-compare-floor",
+			Type:      "sqli.boolean_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.boolean_based")
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified (floor forces body_hash_fuzzy)", res.Verdict)
 	}
 }

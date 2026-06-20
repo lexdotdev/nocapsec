@@ -122,15 +122,9 @@ func ssrfPollAndAttribute(
 }
 
 type ssrfOASTEvidence struct {
-	Request           evidence.Request      `json:"request"`
-	InjectionLocation ssrfInjectionLocation `json:"injection_location"`
-	ExpectedProtocols []string              `json:"expected_protocols,omitempty"`
-}
-
-type ssrfInjectionLocation struct {
-	Kind        string `json:"kind"`
-	JSONPointer string `json:"json_pointer"`
-	Name        string `json:"name"`
+	Request           evidence.Request  `json:"request"`
+	InjectionLocation InjectionLocation `json:"injection_location"`
+	ExpectedProtocols []string          `json:"expected_protocols,omitempty"`
 }
 
 type ssrfOASTProof struct {
@@ -139,23 +133,23 @@ type ssrfOASTProof struct {
 	RequireSourceNotVerifier bool   `json:"require_source_not_verifier"`
 }
 
-func validSSRFInjectionLocation(loc ssrfInjectionLocation) bool {
+// validSSRFInjectionLocation: SSRF only supports json_body / query slots.
+func validSSRFInjectionLocation(loc InjectionLocation) bool {
 	switch loc.Kind {
-	case "json_body":
+	case kindJSONBody:
 		return loc.JSONPointer != ""
-	case "query":
+	case kindQuery:
 		return loc.Name != ""
 	default:
 		return false
 	}
 }
 
-func injectOASTURL(req evidence.Request, loc ssrfInjectionLocation, tok *oast.OASTToken) (evidence.Request, error) {
+// injectOASTURL plants the OAST URL into the declared slot.
+func injectOASTURL(req evidence.Request, loc InjectionLocation, tok *oast.OASTToken) (evidence.Request, error) {
 	switch loc.Kind {
-	case "json_body":
-		return injectJSONBody(req, loc.JSONPointer, tok.URLHTTPS)
-	case "query":
-		return injectQuery(req, loc.Name, tok.URLHTTPS)
+	case kindJSONBody, kindQuery:
+		return injectValue(req, loc, tok.URLHTTPS)
 	default:
 		return evidence.Request{}, fmt.Errorf("unsupported injection kind %q", loc.Kind)
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/lexdotdev/nocapsec/internal/httpx"
@@ -97,6 +98,26 @@ func ParseDimensions(raw []string) []DiffDimension {
 		}
 	}
 	return dims
+}
+
+// unionDims returns dims plus any required dimension not already present.
+func unionDims(dims []DiffDimension, required ...DiffDimension) []DiffDimension {
+	out := slices.Clone(dims)
+	for _, r := range required {
+		if !slices.Contains(out, r) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// dimStrings renders dimensions back to their wire form.
+func dimStrings(dims []DiffDimension) []string {
+	out := make([]string, len(dims))
+	for i, d := range dims {
+		out[i] = string(d)
+	}
+	return out
 }
 
 // lengthBucket groups response sizes into log-scale buckets so small

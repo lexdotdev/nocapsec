@@ -4,8 +4,9 @@
   "description": "Blind SQLi proven by a true-condition response matching baseline and a false-condition response stably differing.",
   "x-flags": "(http — no extra flag)",
   "x-notes": [
-    "true_condition should behave like baseline; false_condition should differ. Make them differ ONLY in the boolean condition.",
-    "compare values: status, body_hash_fuzzy, content_length_bucket, semantic_markers. A robust default is [\"status\", \"body_hash_fuzzy\"]."
+    "The engine builds baseline/true/false by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "kind=query|form needs name; json_body needs json_pointer. For query the param must already be in base_request's URL.",
+    "compare values: status, body_hash_fuzzy, content_length_bucket, semantic_markers. The engine always compares at least {status, body_hash_fuzzy}; client compare can only add strictness."
   ],
   "type": "object",
   "additionalProperties": false,
@@ -21,19 +22,17 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requests", "vulnerable_parameter"],
+      "required": ["base_request", "injection"],
       "properties": {
-        "requests": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["baseline", "true_condition", "false_condition"],
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
           "properties": {
-            "baseline": { "$ref": "#/$defs/request" },
-            "true_condition": { "$ref": "#/$defs/request" },
-            "false_condition": { "$ref": "#/$defs/request" }
+            "payloads": {
+              "required": ["baseline", "true_condition", "false_condition"]
+            }
           }
-        },
-        "vulnerable_parameter": { "type": "string" }
+        }
       }
     },
     "proof": {
@@ -64,12 +63,15 @@
       },
       "auth": { "required": false },
       "evidence": {
-        "requests": {
-          "baseline": { "method": "GET", "url": "https://app.example.com/item?id=1" },
-          "true_condition": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%201=1" },
-          "false_condition": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%201=2" }
-        },
-        "vulnerable_parameter": "id"
+        "base_request": { "method": "GET", "url": "https://app.example.com/item?id=1" },
+        "injection": {
+          "location": { "kind": "query", "name": "id" },
+          "payloads": {
+            "baseline": "1",
+            "true_condition": "1 AND 1=1",
+            "false_condition": "1 AND 1=2"
+          }
+        }
       },
       "proof": {
         "expected_true_similarity_to_baseline": true,

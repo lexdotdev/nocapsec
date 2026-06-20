@@ -82,16 +82,19 @@ func TestParseAcceptsValidFindings(t *testing.T) {
   "proof": {"accepted_signals": ["javascript_dialog"], "expected_message_contains": "VERIFIER_STORED_XSS_", "expected_execution_origin": "https://app.example.com", "timeout_ms": 5000}
 }`,
 
-		"sqli.time_based (nested requests)": `{
+		"sqli.time_based (base_request + injection)": `{
   "finding_id": "sq-1", "type": "sqli.time_based",
   "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},
   "evidence": {
-    "requests": {
-      "control": {"method": "GET", "url": "https://app.example.com/item?id=1"},
-      "delay_low": {"method": "GET", "url": "https://app.example.com/item?id=1';SELECT pg_sleep(1)--"},
-      "delay_high": {"method": "GET", "url": "https://app.example.com/item?id=1';SELECT pg_sleep(5)--"}
-    },
-    "vulnerable_parameter": "id"
+    "base_request": {"method": "GET", "url": "https://app.example.com/item?id=1"},
+    "injection": {
+      "location": {"kind": "query", "name": "id"},
+      "payloads": {
+        "control": "1",
+        "delay_low": "1';SELECT pg_sleep(1)--",
+        "delay_high": "1';SELECT pg_sleep(5)--"
+      }
+    }
   },
   "proof": {"min_median_delta_ms": 3000, "repetitions": 3}
 }`,

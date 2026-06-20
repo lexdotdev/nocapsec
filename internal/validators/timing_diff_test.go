@@ -15,17 +15,30 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
+// Timing arms differ only in the injected query value; the clock and handlers
+// key off that value (not the path), since the engine builds all arms from one
+// base_request.
+const (
+	timingParam = "id"
+	valControl  = "1"
+	valLow      = "1 AND SLEEP(0)"
+	valHigh     = "1 AND SLEEP(5)"
+)
+
 func timingJob(t *testing.T, port int, findingType string) validators.Job {
 	t.Helper()
 	ps := strconv.Itoa(port)
 	base := "http://app.example.com:" + ps
 	ev, _ := json.Marshal(map[string]any{
-		"requests": map[string]any{
-			"control":    map[string]string{"method": "GET", "url": base + "/control"},
-			"delay_low":  map[string]string{"method": "GET", "url": base + "/low"},
-			"delay_high": map[string]string{"method": "GET", "url": base + "/high"},
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": timingParam},
+			"payloads": map[string]string{
+				"control":    valControl,
+				"delay_low":  valLow,
+				"delay_high": valHigh,
+			},
 		},
-		"vulnerable_parameter": "id",
 	})
 	proof, _ := json.Marshal(map[string]any{
 		"repetitions":             3,
@@ -57,16 +70,16 @@ func timingEnv(t *testing.T, srv *httptest.Server, clock validators.Clock) valid
 	}
 }
 
-// pathChanClock is a Clock that receives request paths from the handler,
-// returning a predetermined duration for each path.
-type pathChanClock interface {
+// valChanClock is a Clock that receives the injected query value from the
+// handler, returning a predetermined duration for each arm.
+type valChanClock interface {
 	validators.Clock
-	recordPath(path string)
+	recordVal(val string)
 }
 
-// pathAwareClock returns fixed durations keyed by URL path.
+// pathAwareClock returns fixed durations keyed by the injected query value.
 type pathAwareClock struct {
-	paths   chan string
+	vals    chan string
 	control time.Duration
 	low     time.Duration
 	high    time.Duration
@@ -74,7 +87,7 @@ type pathAwareClock struct {
 
 func newPathAwareClock(controlMS, lowMS, highMS int) *pathAwareClock {
 	return &pathAwareClock{
-		paths:   make(chan string, 100),
+		vals:    make(chan string, 100),
 		control: time.Duration(controlMS) * time.Millisecond,
 		low:     time.Duration(lowMS) * time.Millisecond,
 		high:    time.Duration(highMS) * time.Millisecond,
@@ -86,35 +99,34 @@ func (c *pathAwareClock) Now() time.Time {
 }
 
 func (c *pathAwareClock) Since(_ time.Time) time.Duration {
-	path := <-c.paths
-	switch path {
-	case "/control":
+	switch <-c.vals {
+	case valControl:
 		return c.control
-	case "/low":
+	case valLow:
 		return c.low
-	case "/high":
+	case valHigh:
 		return c.high
 	default:
 		return c.control
 	}
 }
 
-func (c *pathAwareClock) recordPath(path string) {
-	c.paths <- path
+func (c *pathAwareClock) recordVal(val string) {
+	c.vals <- val
 }
 
-// pathRecordingHandler sends each request's path to the clock channel.
+// pathRecordingHandler sends each request's injected query value to the clock.
 func pathRecordingHandler(clock *pathAwareClock) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clock.paths <- r.URL.Path
+		clock.vals <- r.URL.Query().Get(timingParam)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`<html><p>ok</p></html>`))
 	})
 }
 
-func pathRecordingHandlerGeneric(clock pathChanClock) http.Handler {
+func pathRecordingHandlerGeneric(clock valChanClock) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clock.recordPath(r.URL.Path)
+		clock.recordVal(r.URL.Query().Get(timingParam))
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`<html><p>ok</p></html>`))
 	})
@@ -122,7 +134,7 @@ func pathRecordingHandlerGeneric(clock pathChanClock) http.Handler {
 
 // unstableControlClock cycles through variable control durations.
 type unstableControlClock struct {
-	paths       chan string
+	vals        chan string
 	controlDurs []time.Duration
 	controlIdx  int
 	low         time.Duration
@@ -134,23 +146,22 @@ func (c *unstableControlClock) Now() time.Time {
 }
 
 func (c *unstableControlClock) Since(_ time.Time) time.Duration {
-	path := <-c.paths
-	switch path {
-	case "/control":
+	switch <-c.vals {
+	case valControl:
 		d := c.controlDurs[c.controlIdx%len(c.controlDurs)]
 		c.controlIdx++
 		return d
-	case "/low":
+	case valLow:
 		return c.low
-	case "/high":
+	case valHigh:
 		return c.high
 	default:
 		return 50 * time.Millisecond
 	}
 }
 
-func (c *unstableControlClock) recordPath(path string) {
-	c.paths <- path
+func (c *unstableControlClock) recordVal(val string) {
+	c.vals <- val
 }
 
 func TestSQLiTimingVerified(t *testing.T) {
@@ -226,7 +237,7 @@ func TestTimingNotReproduced(t *testing.T) {
 // Unstable control -> inconclusive.
 func TestTimingUnstableControl(t *testing.T) {
 	unstable := &unstableControlClock{
-		paths:       make(chan string, 100),
+		vals:        make(chan string, 100),
 		controlDurs: []time.Duration{50 * time.Millisecond, 5000 * time.Millisecond, 50 * time.Millisecond},
 		controlIdx:  0,
 		low:         1000 * time.Millisecond,
@@ -255,11 +266,11 @@ func TestTimingUnstableControl(t *testing.T) {
 func TestTimingStatusCodeMismatch(t *testing.T) {
 	clock := newPathAwareClock(50, 1000, 5000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clock.paths <- r.URL.Path
-		switch r.URL.Path {
-		case "/high":
+		val := r.URL.Query().Get(timingParam)
+		clock.vals <- val
+		if val == valHigh {
 			w.WriteHeader(http.StatusInternalServerError)
-		default:
+		} else {
 			w.WriteHeader(http.StatusOK)
 		}
 		_, _ = w.Write([]byte(`<html><p>ok</p></html>`))
@@ -332,12 +343,12 @@ func TestTimingMalformedJSON(t *testing.T) {
 func TestTimingBodyDissimilar(t *testing.T) {
 	clock := newPathAwareClock(50, 1000, 5000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		clock.paths <- r.URL.Path
+		val := r.URL.Query().Get(timingParam)
+		clock.vals <- val
 		w.WriteHeader(http.StatusOK)
-		switch r.URL.Path {
-		case "/high":
+		if val == valHigh {
 			_, _ = w.Write([]byte(`<html><form><input type="password"></form><p>error denied</p></html>`))
-		default:
+		} else {
 			_, _ = w.Write([]byte(`<html><p>ok</p></html>`))
 		}
 	}))
@@ -370,12 +381,15 @@ func TestTimingCustomProof(t *testing.T) {
 	base := "http://app.example.com:" + ps
 
 	ev, _ := json.Marshal(map[string]any{
-		"requests": map[string]any{
-			"control":    map[string]string{"method": "GET", "url": base + "/control"},
-			"delay_low":  map[string]string{"method": "GET", "url": base + "/low"},
-			"delay_high": map[string]string{"method": "GET", "url": base + "/high"},
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": timingParam},
+			"payloads": map[string]string{
+				"control":    valControl,
+				"delay_low":  valLow,
+				"delay_high": valHigh,
+			},
 		},
-		"vulnerable_parameter": "id",
 	})
 	proof, _ := json.Marshal(map[string]any{
 		"repetitions":             5,
@@ -408,5 +422,49 @@ func TestTimingCustomProof(t *testing.T) {
 	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (custom threshold)", result)
+	}
+}
+
+// Cheat resistance: the engine builds all three arms from one base_request, so
+// the declared injection location must exist there. A location absent from
+// base_request is invalid — no second independent request can be supplied.
+func TestTimingInjectionLocationAbsent(t *testing.T) {
+	ps := strconv.Itoa(9) // unused port; never dialed because parse fails first
+	base := "http://app.example.com:" + ps
+
+	// base_request has no "id" query parameter, but the injection names it.
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]string{"method": "GET", "url": base + "/item"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": timingParam},
+			"payloads": map[string]string{
+				"control":    valControl,
+				"delay_low":  valLow,
+				"delay_high": valHigh,
+			},
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"repetitions":         3,
+		"min_median_delta_ms": 3000,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-timing-loc-absent",
+			Type:      "sqli.time_based",
+			Evidence:  ev,
+			Proof:     proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.time_based")
+	env := validators.Env{Clock: validators.WallClock{}}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Invalid {
+		t.Fatalf("verdict = %q, want invalid (injection location absent from base_request)", res.Verdict)
 	}
 }

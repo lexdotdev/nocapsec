@@ -3,6 +3,7 @@ package validators
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math/rand/v2"
 	"slices"
 
@@ -12,13 +13,11 @@ import (
 )
 
 // timingEvidence is shared by sqli.time_based and command_injection.time_based.
+// The engine builds control/low/high from one base_request by planting each
+// payload value into the declared injection slot.
 type timingEvidence struct {
-	Requests struct {
-		Control   evidence.Request `json:"control"`
-		DelayLow  evidence.Request `json:"delay_low"`
-		DelayHigh evidence.Request `json:"delay_high"`
-	} `json:"requests"`
-	VulnerableParam string `json:"vulnerable_parameter"`
+	BaseRequest evidence.Request  `json:"base_request"`
+	Injection   injectionEvidence `json:"injection"`
 }
 
 // timingProof configures the timing differential measurement.
@@ -72,17 +71,39 @@ func timingDifferential(ctx context.Context, env Env, ev timingEvidence, proof t
 	return analyzeTimingSamples(samples, proof), nil
 }
 
+// labeledReq is one timing arm: a label and the request the engine built for it.
+type labeledReq struct {
+	label string
+	req   evidence.Request
+}
+
+// buildTimingArms plants each payload value into the declared slot of
+// base_request, producing the control/low/high arms. A missing payload key or
+// an inject error (slot absent from base_request) is an error.
+func buildTimingArms(ev timingEvidence) ([]labeledReq, error) {
+	loc := ev.Injection.Location
+	out := make([]labeledReq, 0, 3)
+	for _, label := range []string{labelControl, labelDelayLow, labelDelayHigh} {
+		val, ok := ev.Injection.Payloads[label]
+		if !ok {
+			return nil, fmt.Errorf("missing payload %q", label)
+		}
+		req, err := injectValue(ev.BaseRequest, loc, val)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, labeledReq{label, req})
+	}
+	return out, nil
+}
+
 // measureTimingWithClock runs control/low/high requests in randomized order,
 // timing each via the injected Clock for deterministic tests.
 func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.ClientBundle, ev timingEvidence, reps int) ([]timingSample, error) {
-	type labeledReq struct {
-		label string
-		req   evidence.Request
-	}
-	reqs := []labeledReq{
-		{labelControl, ev.Requests.Control},
-		{labelDelayLow, ev.Requests.DelayLow},
-		{labelDelayHigh, ev.Requests.DelayHigh},
+	// Build the three labeled arms once, before the schedule loop.
+	reqs, err := buildTimingArms(ev)
+	if err != nil {
+		return nil, err
 	}
 
 	// Build schedule: each request repeated reps times, then shuffled.
@@ -249,12 +270,17 @@ func medianDuration(samples []timingSample) int64 {
 }
 
 // parseTimingEvidence unmarshals and validates the timing evidence and proof.
+// A bad base_request, an invalid injection location, a missing payload key, or
+// an inject error (slot absent from base_request) all yield invalid.
 func parseTimingEvidence(finding evidence.Finding) (timingEvidence, timingProof, verdict.Verdict) {
 	var ev timingEvidence
 	if err := json.Unmarshal(finding.Evidence, &ev); err != nil {
 		return ev, timingProof{}, verdict.Invalid
 	}
-	if ev.Requests.Control.URL == "" || ev.Requests.DelayLow.URL == "" || ev.Requests.DelayHigh.URL == "" {
+	if ev.BaseRequest.Method == "" || ev.BaseRequest.URL == "" || !ev.Injection.Location.valid() {
+		return ev, timingProof{}, verdict.Invalid
+	}
+	if _, err := buildTimingArms(ev); err != nil {
 		return ev, timingProof{}, verdict.Invalid
 	}
 

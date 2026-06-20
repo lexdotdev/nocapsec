@@ -4,8 +4,9 @@
   "description": "Command injection proven by a latency delta from an injected shell sleep (control/low/high).",
   "x-flags": "(http/timing — no extra flag)",
   "x-notes": [
-    "requests.control is uninjected; delay_low/delay_high inject the same command with a small vs large sleep.",
-    "Set min_median_delta_ms below the real sleep, above noise. Unstable targets map to inconclusive."
+    "The engine builds control/low/high by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "payloads.control is the uninjected value; delay_low/delay_high carry a small vs large shell sleep. kind=query|form needs name; json_body needs json_pointer.",
+    "Set min_median_delta_ms below the real sleep, above noise; floor is 3000. Unstable targets map to inconclusive."
   ],
   "type": "object",
   "additionalProperties": false,
@@ -21,19 +22,17 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requests", "vulnerable_parameter"],
+      "required": ["base_request", "injection"],
       "properties": {
-        "requests": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["control", "delay_low", "delay_high"],
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
           "properties": {
-            "control": { "$ref": "#/$defs/request" },
-            "delay_low": { "$ref": "#/$defs/request" },
-            "delay_high": { "$ref": "#/$defs/request" }
+            "payloads": {
+              "required": ["control", "delay_low", "delay_high"]
+            }
           }
-        },
-        "vulnerable_parameter": { "type": "string" }
+        }
       }
     },
     "proof": {
@@ -58,12 +57,15 @@
       },
       "auth": { "required": false },
       "evidence": {
-        "requests": {
-          "control": { "method": "GET", "url": "https://app.example.com/ping?host=127.0.0.1" },
-          "delay_low": { "method": "GET", "url": "https://app.example.com/ping?host=127.0.0.1%3Bsleep%200" },
-          "delay_high": { "method": "GET", "url": "https://app.example.com/ping?host=127.0.0.1%3Bsleep%205" }
-        },
-        "vulnerable_parameter": "host"
+        "base_request": { "method": "GET", "url": "https://app.example.com/ping?host=127.0.0.1" },
+        "injection": {
+          "location": { "kind": "query", "name": "host" },
+          "payloads": {
+            "control": "127.0.0.1",
+            "delay_low": "127.0.0.1;sleep 0",
+            "delay_high": "127.0.0.1;sleep 5"
+          }
+        }
       },
       "proof": {
         "repetitions": 5,

@@ -52,7 +52,9 @@ In another terminal from the `nocapsec` repo:
 go run ./examples/GHSA-5qg5-g7c2-pfx8
 ```
 
-The example replays the `control` / `sleep 0` / `sleep 5` requests in randomized,
-repeated order and measures the median latency delta. A verified report
+The evidence is one `base_request` plus an `injection` slot (`query` param `url`)
+and three payload values (control / `sleep 0` / `sleep 5`). The engine builds the
+three arms by planting each value into that one slot, replays them in randomized,
+repeated order, and measures the median latency delta. A verified report
 (`delta_ms` ≈ 5000 over a 3500 ms threshold, identical status/body) proves the
 injected command executed server-side.

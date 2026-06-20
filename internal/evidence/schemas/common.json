@@ -50,6 +50,31 @@
       "type": "object",
       "additionalProperties": { "type": "string" }
     },
+    "injection_location": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "description": "One declared slot. kind=query|form needs name; json_body needs json_pointer. The position must already exist in base_request.",
+      "properties": {
+        "kind": { "enum": ["query", "form", "json_body"] },
+        "name": { "type": "string" },
+        "json_pointer": { "type": "string" }
+      }
+    },
+    "injection": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["location", "payloads"],
+      "description": "Engine-owned contrast: one base_request slot, one payload value per differential arm.",
+      "properties": {
+        "location": { "$ref": "#/$defs/injection_location" },
+        "payloads": {
+          "type": "object",
+          "minProperties": 1,
+          "additionalProperties": { "type": "string" }
+        }
+      }
+    },
     "side_effects": {
       "type": "object",
       "additionalProperties": false,

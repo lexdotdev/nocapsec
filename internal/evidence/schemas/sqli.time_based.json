@@ -4,8 +4,9 @@
   "description": "Blind SQLi proven by a reproducible latency delta between a low-delay and high-delay payload vs a control.",
   "x-flags": "(http/timing — no extra flag)",
   "x-notes": [
-    "requests.control is uninjected; delay_low/delay_high are the same injection with a small vs large sleep.",
-    "Set min_median_delta_ms below your real sleep (e.g. 3500 for a 5s sleep) but above jitter.",
+    "The engine builds control/low/high by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "payloads.control is the uninjected value; delay_low/delay_high carry a small vs large sleep. kind=query|form needs name; json_body needs json_pointer.",
+    "Set min_median_delta_ms below your real sleep (e.g. 3500 for a 5s sleep) but above jitter; floor is 3000.",
     "timeout_ms must exceed the high delay. Unstable targets map to inconclusive."
   ],
   "type": "object",
@@ -22,10 +23,17 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["requests", "vulnerable_parameter"],
+      "required": ["base_request", "injection"],
       "properties": {
-        "requests": { "$ref": "#/$defs/delay_requests" },
-        "vulnerable_parameter": { "type": "string" },
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "delay_low", "delay_high"]
+            }
+          }
+        },
         "expected_low_delay_ms": { "type": "number" },
         "expected_high_delay_ms": { "type": "number" },
         "dbms_hint": { "type": "string" }
@@ -44,18 +52,6 @@
       }
     }
   },
-  "$defs": {
-    "delay_requests": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["control", "delay_low", "delay_high"],
-      "properties": {
-        "control": { "$ref": "#/$defs/request" },
-        "delay_low": { "$ref": "#/$defs/request" },
-        "delay_high": { "$ref": "#/$defs/request" }
-      }
-    }
-  },
   "examples": [
     {
       "finding_id": "sqli-timing-id",
@@ -68,12 +64,15 @@
       },
       "auth": { "required": false },
       "evidence": {
-        "requests": {
-          "control": { "method": "GET", "url": "https://app.example.com/item?id=1" },
-          "delay_low": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%20SLEEP(0)" },
-          "delay_high": { "method": "GET", "url": "https://app.example.com/item?id=1%20AND%20SLEEP(5)" }
+        "base_request": { "method": "GET", "url": "https://app.example.com/item?id=1" },
+        "injection": {
+          "location": { "kind": "query", "name": "id" },
+          "payloads": {
+            "control": "1",
+            "delay_low": "1 AND SLEEP(0)",
+            "delay_high": "1 AND SLEEP(5)"
+          }
         },
-        "vulnerable_parameter": "id",
         "dbms_hint": "mysql"
       },
       "proof": {

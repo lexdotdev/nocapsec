@@ -65,7 +65,9 @@ In another terminal from the `nocapsec` repo:
 go run ./examples/GHSA-pmf9-2rc3-vvxx
 ```
 
-The example replays `control` / `SLEEP(0)` / `SLEEP(5)` in randomized, repeated order.
-A verified report (`delta_ms` ≈ 5000 over a 3500 ms threshold, identical body/status)
-proves the injected `SLEEP` executed in the database. The `(SELECT SLEEP(n))` subquery
-form makes the delay fire exactly once regardless of matched rows.
+The evidence is one `base_request` plus an `injection` slot (`query` param `almox`)
+and three payload values (control / `SLEEP(0)` / `SLEEP(5)`). The engine builds the
+three arms by planting each value into that one slot, then replays them in randomized,
+repeated order. A verified report (`delta_ms` ≈ 5000 over a 3500 ms threshold, identical
+body/status) proves the injected `SLEEP` executed in the database. The `(SELECT SLEEP(n))`
+subquery form makes the delay fire exactly once regardless of matched rows.
