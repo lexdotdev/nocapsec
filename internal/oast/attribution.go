@@ -2,19 +2,19 @@ package oast
 
 import "strings"
 
-// SourceClass categorizes a callback's origin for proof evaluation.
+// SourceClass categorizes a callback's origin.
 type SourceClass int
 
 const (
-	// SourceTargetInfra: callback came from target infrastructure.
+	// SourceTargetInfra: from target infrastructure.
 	SourceTargetInfra SourceClass = iota
-	// SourceVerifierBrowser: callback came from the verifier's browser.
+	// SourceVerifierBrowser: from verifier browser.
 	SourceVerifierBrowser
 	// SourceNoise: unattributable third-party callback.
 	SourceNoise
 )
 
-// ClassifySource attributes an interaction by IP and user-agent.
+// ClassifySource attributes a callback by IP, UA.
 func ClassifySource(ix Interaction, targetIPs []string, verifierUA string) SourceClass {
 	for _, s := range targetIPs {
 		if ix.SourceIP == s {
@@ -27,7 +27,7 @@ func ClassifySource(ix Interaction, targetIPs []string, verifierUA string) Sourc
 	return SourceNoise
 }
 
-// FilterByProtocol keeps interactions matching an expected protocol.
+// FilterByProtocol keeps expected protocols.
 func FilterByProtocol(ixns []Interaction, expected []string) []Interaction {
 	set := make(map[string]struct{}, len(expected))
 	for _, p := range expected {
@@ -42,7 +42,8 @@ func FilterByProtocol(ixns []Interaction, expected []string) []Interaction {
 	return out
 }
 
-// RequireSourceNotVerifier drops verifier-browser and noise interactions.
+// RequireSourceNotVerifier drops verifier + noise.
+// Source attribution: not verifier.
 func RequireSourceNotVerifier(ixns []Interaction, targetIPs []string, verifierUA string) []Interaction {
 	var out []Interaction
 	for _, ix := range ixns {

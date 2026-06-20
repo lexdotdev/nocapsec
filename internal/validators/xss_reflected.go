@@ -36,7 +36,7 @@ func (xssReflected) Validate(ctx context.Context, job Job, env Env) (Result, err
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// Inject the per-run nonce so the reflected payload carries it.
+	// Inject per-run nonce into the reflected payload.
 	ev.Entrypoint.URL = replaceNonceSlot(ev.Entrypoint.URL, job.Nonce)
 
 	// Reject disallowed initial-navigation schemes.
@@ -45,13 +45,13 @@ func (xssReflected) Validate(ctx context.Context, job Job, env Env) (Result, err
 		return Result{Verdict: verdict.Rejected}, nil
 	}
 
-	// Policy-check the entrypoint URL.
+	// Policy-check the entrypoint.
 	safe, err := env.Policy.CheckURL(entryURL, policy.PhaseInitial)
 	if err != nil {
 		return Result{Verdict: verdict.Rejected}, nil //nolint:nilerr // policy rejection -> rejected
 	}
 
-	// Initial navigation origin must equal target origin.
+	// Initial origin must be the target.
 	if !safe.Origin.Equal(targetOrigin) {
 		return Result{Verdict: verdict.Rejected}, nil
 	}
@@ -78,7 +78,7 @@ func (xssReflected) Validate(ctx context.Context, job Job, env Env) (Result, err
 		return Result{Verdict: verdict.Inconclusive}, fmt.Errorf("xss.reflected: browser: %w", err)
 	}
 
-	// Reject if page navigated to an external origin before any signal.
+	// Reject if navigated off-target before any signal.
 	if navigatedExternal(result.Navigation, targetOrigin) {
 		return Result{Verdict: verdict.NotReproduced}, nil
 	}
@@ -99,7 +99,7 @@ type xssProofBlock struct {
 	MessageContainsNonce bool   `json:"message_contains_nonce"`
 }
 
-// xssReflectedEvidence is the evidence shape for xss.reflected.
+// xssReflectedEvidence is the xss.reflected shape.
 type xssReflectedEvidence struct {
 	Entrypoint    evidence.Request    `json:"entrypoint"`
 	PayloadMarker string              `json:"payload_marker"`
@@ -112,7 +112,7 @@ type xssReflectedTrigger struct {
 	PostLoadActions []string `json:"post_load_actions"`
 }
 
-// xssProof is shared between reflected and stored XSS.
+// xssProof is shared by reflected and stored XSS.
 type xssProof struct {
 	AcceptedSignals         []string `json:"accepted_signals"`
 	ExpectedMessageContains string   `json:"expected_message_contains"`
@@ -121,7 +121,7 @@ type xssProof struct {
 	TimeoutMS               int      `json:"timeout_ms"`
 }
 
-// rejectScheme returns true for schemes that must never be treated as XSS proof.
+// rejectScheme: true unless scheme is http(s).
 func rejectScheme(raw string) bool {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -135,8 +135,7 @@ func rejectScheme(raw string) bool {
 	}
 }
 
-// navigatedExternal checks if any committed navigation went to an origin
-// other than the target before signals could fire.
+// navigatedExternal: true if a nav left the target.
 func navigatedExternal(navs []browser.NavEvent, target policy.Origin) bool {
 	for _, n := range navs {
 		o, ok := policy.ParseOrigin(n.Origin)
@@ -150,9 +149,8 @@ func navigatedExternal(navs []browser.NavEvent, target policy.Origin) bool {
 	return false
 }
 
-// qualifyingSignal returns the matched signal kind if any dialog or console
-// event satisfies the proof rule: carries the nonce, from the target origin,
-// not from the verifier hook.
+// qualifyingSignal: nonce signal from target,
+// not verifier.
 func qualifyingSignal(r browser.BrowserResult, pf xssProof, target policy.Origin, nonce string) (string, bool) {
 	for _, sig := range pf.AcceptedSignals {
 		switch sig {
@@ -185,8 +183,7 @@ func qualifyingSignal(r browser.BrowserResult, pf xssProof, target policy.Origin
 	return "", false
 }
 
-// consoleOriginMatch checks that a console event's source URL belongs to the
-// target origin. Empty/missing source URLs are rejected.
+// consoleOriginMatch: source is target; empty bad.
 func consoleOriginMatch(sourceURL string, target policy.Origin) bool {
 	if sourceURL == "" {
 		return false

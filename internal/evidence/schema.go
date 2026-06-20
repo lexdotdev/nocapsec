@@ -16,13 +16,13 @@ import (
 var schemaFS embed.FS
 
 type compiledSchema struct {
-	doc      []byte               // original file bytes, for the `doc` command
-	resolved *jsonschema.Resolved // merged + resolved, for validation
+	doc      []byte               // original bytes, for `doc`
+	resolved *jsonschema.Resolved // resolved, for validation
 }
 
 var (
 	schemaRegistry map[string]*compiledSchema
-	commonDefsDoc  []byte // pretty-printed shared $defs, for the `doc` footer
+	commonDefsDoc  []byte // shared $defs, for the `doc` footer
 )
 
 func init() {
@@ -31,8 +31,7 @@ func init() {
 	}
 }
 
-// loadSchemas reads schemas/common.json plus every schemas/<type>.json, merges
-// the shared $defs into each, and resolves them for validation.
+// loadSchemas merges $defs per type, resolves.
 func loadSchemas() error {
 	commonDefs, err := loadCommonDefs()
 	if err != nil {
@@ -88,9 +87,7 @@ func loadCommonDefs() (map[string]json.RawMessage, error) {
 	return common.Defs, nil
 }
 
-// mergeDefs injects the shared $defs into a per-type schema, letting type schemas
-// reference #/$defs/request etc. without restating them. A type schema's own
-// $defs (if any) override shared keys.
+// mergeDefs injects $defs; local $defs override.
 func mergeDefs(raw []byte, common map[string]json.RawMessage) ([]byte, error) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -113,14 +110,14 @@ func mergeDefs(raw []byte, common map[string]json.RawMessage) ([]byte, error) {
 	return json.Marshal(doc)
 }
 
-// hasSchema reports whether a type has a registered schema.
+// hasSchema reports whether a type has a schema.
 func hasSchema(typ string) bool {
 	_, ok := schemaRegistry[typ]
 	return ok
 }
 
-// validateInstance validates a decoded finding against its type schema. The
-// returned error carries the failing JSON path; callers map it to a verdict.
+// validateInstance validates vs type schema.
+// Error carries the JSON path.
 func validateInstance(typ string, instance any) error {
 	cs, ok := schemaRegistry[typ]
 	if !ok {
@@ -129,7 +126,7 @@ func validateInstance(typ string, instance any) error {
 	return cs.resolved.Validate(instance)
 }
 
-// schemaTypes returns the sorted set of types that have a schema.
+// schemaTypes returns sorted types with a schema.
 func schemaTypes() []string {
 	out := make([]string, 0, len(schemaRegistry))
 	for t := range schemaRegistry {
@@ -139,7 +136,7 @@ func schemaTypes() []string {
 	return out
 }
 
-// schemaDoc returns the original schema document for a type.
+// schemaDoc returns a type's schema document.
 func schemaDoc(typ string) ([]byte, bool) {
 	cs, ok := schemaRegistry[typ]
 	if !ok {

@@ -2,13 +2,12 @@ package policy
 
 import "errors"
 
-// ResetRedirects begins a fresh redirect chain. Call before each top-level
-// request so MaxRedirects bounds one chain, not the Checker's lifetime.
+// ResetRedirects starts a fresh chain so
+// MaxRedirects bounds one req.
 func (c *Checker) ResetRedirects() { c.redirects = 0 }
 
-// CheckRedirect re-runs the full URL policy on each redirect hop and bounds the
-// chain by MaxRedirects, so a redirect cannot steer to a blocked IP, an
-// out-of-scope host, or a non-http(s) scheme — and a loop cannot run forever.
+// CheckRedirect: per-hop re-check + chain cap;
+// no redirect to a blocked target.
 func (c *Checker) CheckRedirect(_, to string) error {
 	if !c.Policy.AllowRedirects {
 		return reject(ReasonTooManyRedirect, to, nil)
@@ -20,8 +19,8 @@ func (c *Checker) CheckRedirect(_, to string) error {
 		}
 	}
 	if _, err := c.CheckURL(to, PhaseRedirect); err != nil {
-		// CheckURL returns a precise *RejectionError; surface it verbatim. Wrap
-		// any other (defensive) error so the gate rejects rather than panics.
+		// Surface RejectionError verbatim; wrap
+		// else so the gate rejects.
 		var re *RejectionError
 		if errors.As(err, &re) {
 			return err

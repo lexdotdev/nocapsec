@@ -1,10 +1,15 @@
-// Example GHSA-5ghc-8wr3-788c: IDOR read in RomM's collections API.
+// Example GHSA-5ghc-8wr3-788c: IDOR read in RomM's
+// collections API.
 //
-// idor.read needs two distinct authenticated sessions. RomM issues short-lived
-// bearer tokens, so this harness bootstraps the two users and mints their tokens
-// at run time, writes them into a temp auth-state file (the same shape as the
-// nocapsec -authstate flag), and then runs the verification. The engine has the
-// owner create a private collection and the attacker read it by id.
+// idor.read needs two distinct authenticated
+// sessions. RomM issues short-lived bearer tokens,
+// so this harness bootstraps the two users and
+// mints their tokens at run time, writes them into
+// a temp auth-state file (the same shape as the
+// nocapsec -authstate flag), and then runs the
+// verification. The engine has the owner create a
+// private collection and the attacker read it by
+// id.
 package main
 
 import (
@@ -55,21 +60,26 @@ func main() {
 	}
 }
 
-// setupSessions bootstraps the owner (first admin) and attacker (viewer) users —
-// idempotently — and returns a collections token for each.
+// setupSessions bootstraps the owner (first admin)
+// and attacker (viewer) users -- idempotently --
+// and returns a collections token for each.
 func setupSessions() (ownerTok, attackerTok string, err error) {
-	// 1. Bootstrap the first admin (unauthenticated when zero admins exist).
-	//    On a non-fresh instance this 403/400s; that's fine, the user exists.
+	// 1. Bootstrap the first admin (unauthenticated
+	//    when zero admins exist). On a non-fresh
+	//    instance this 403/400s; that's fine, the
+	//    user exists.
 	_ = createUser("", "owner", "owner@x.test", "OwnerPass123!", "admin")
 
-	// 2. An admin-scoped owner token is needed to create the attacker.
+	// 2. An admin-scoped owner token is needed to
+	//    create the attacker.
 	ownerAdmin, err := mintToken("owner", "OwnerPass123!", "users.write users.read collections.read collections.write me.read")
 	if err != nil {
 		return "", "", fmt.Errorf("owner admin token: %w", err)
 	}
 	_ = createUser(ownerAdmin, "attacker", "attacker@x.test", "AttackPass123!", "viewer")
 
-	// 3. Scoped tokens for the two verification sessions.
+	// 3. Scoped tokens for the two verification
+	//    sessions.
 	if ownerTok, err = mintToken("owner", "OwnerPass123!", "collections.read collections.write me.read"); err != nil {
 		return "", "", fmt.Errorf("owner token: %w", err)
 	}
@@ -125,8 +135,10 @@ func mintToken(username, password, scope string) (string, error) {
 	return out.AccessToken, nil
 }
 
-// writeAuthState emits a temp -authstate file binding the two bearer tokens to
-// the owner-session / attacker-session ids referenced by evidence.json.
+// writeAuthState emits a temp -authstate file
+// binding the two bearer tokens to the
+// owner-session / attacker-session ids referenced
+// by evidence.json.
 func writeAuthState(ownerTok, attackerTok string) (path string, cleanup func(), err error) {
 	type state struct {
 		ID             string   `json:"id"`

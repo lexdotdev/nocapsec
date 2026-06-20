@@ -16,8 +16,9 @@ func main() {
 		log.Fatal("resolve example path")
 	}
 
-	// Timing proof: control / SLEEP(0) / SLEEP(5) replayed in randomized,
-	// repeated order against the real MySQL-backed endpoint.
+	// Timing proof: control / SLEEP(0) / SLEEP(5)
+	// replayed in randomized, repeated order against
+	// the real MySQL-backed endpoint.
 	err := exampleutil.Run(context.Background(), filepath.Dir(file), exampleutil.Options{
 		InternalAssessment: true,
 		Timeout:            120 * time.Second,

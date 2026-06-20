@@ -5,8 +5,7 @@ import (
 	"strings"
 )
 
-// Doc returns the JSON Schema document for a finding type, followed by the
-// shared $defs it references.
+// Doc returns a type's JSON Schema + $defs.
 func Doc(typ string) (string, error) {
 	doc, ok := schemaDoc(strings.ToLower(strings.TrimSpace(typ)))
 	if !ok {
@@ -24,7 +23,7 @@ func Doc(typ string) (string, error) {
 	return b.String(), nil
 }
 
-// DocList lists every finding type that has a schema.
+// DocList lists every finding type with a schema.
 func DocList() string {
 	var b strings.Builder
 	b.WriteString("nocapsec doc <type> — print the JSON Schema for a finding type.\n\ntypes:\n")

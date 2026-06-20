@@ -10,9 +10,8 @@ import (
 	"time"
 )
 
-// Receiver is an in-process OAST backend that hosts its own HTTP and DNS
-// listeners. Callbacks land here directly; Poll reads them from memory with no
-// network round-trip. The engine owns it and stops it on shutdown.
+// Receiver: in-process OAST with own listeners.
+// HTTP and DNS.
 type Receiver struct {
 	domain        string
 	advertiseHost string
@@ -22,22 +21,17 @@ type Receiver struct {
 	dnsConn      *net.UDPConn
 	httpAddr     string
 	dnsAddr      string
-	callbackHost string // optional hostname for callback URLs (port kept from httpAddr)
+	callbackHost string // optional hostname for callback URLs
 
 	mu           sync.Mutex
-	interactions map[string][]Interaction // keyed by correlationID
+	interactions map[string][]Interaction // by correlationID
 }
 
-// SetCallbackHost overrides the host used in HTTP callback URLs while keeping
-// the receiver's bound port. Use it when the target rejects raw-IP callback
-// URLs (e.g. an SSRF guard that only permits TLD'd hostnames); point a
-// loopback-resolving name such as oast.localtest.me at the receiver. Real OAST
-// backends (interactsh) hand out domains rather than bare IPs for the same
-// reason. Call after Start, before allocating interactions.
+// SetCallbackHost: loopback host for targets
+// behind an SSRF guard.
 func (r *Receiver) SetCallbackHost(host string) { r.callbackHost = host }
 
-// NewReceiver builds an embedded receiver. domain is the callback suffix;
-// advertiseHost is the A-record reply and the host in callback URLs.
+// NewReceiver builds an embedded receiver.
 func NewReceiver(domain, advertiseHost string) *Receiver {
 	return &Receiver{
 		domain:        domain,
@@ -47,8 +41,7 @@ func NewReceiver(domain, advertiseHost string) *Receiver {
 	}
 }
 
-// Start binds the HTTP and DNS listeners and serves them in goroutines.
-// httpAddr/dnsAddr are host:port; a :0 port is resolved and readable after.
+// Start serves HTTP + DNS in goroutines.
 func (r *Receiver) Start(httpAddr, dnsAddr string) error {
 	ln, err := net.Listen("tcp", httpAddr)
 	if err != nil {
@@ -77,10 +70,10 @@ func (r *Receiver) Start(httpAddr, dnsAddr string) error {
 	return nil
 }
 
-// HTTPAddr returns the bound HTTP listener address (valid after Start).
+// HTTPAddr returns bound HTTP addr (after Start).
 func (r *Receiver) HTTPAddr() string { return r.httpAddr }
 
-// DNSAddr returns the bound DNS listener address (valid after Start).
+// DNSAddr returns bound DNS addr (after Start).
 func (r *Receiver) DNSAddr() string { return r.dnsAddr }
 
 func (r *Receiver) NewInteraction(_ context.Context, purpose string) (*OASTToken, error) {
@@ -120,7 +113,7 @@ func (r *Receiver) Poll(_ context.Context, tokenID string, since time.Time) ([]I
 	return out, nil
 }
 
-// Close is a no-op per token; the listeners stop via Stop.
+// Close is a per-token no-op; stop via Stop.
 func (r *Receiver) Close(_ context.Context, _ string) error { return nil }
 
 // Stop shuts down the HTTP and DNS listeners.
@@ -180,7 +173,7 @@ func (r *Receiver) serveDNS() {
 	}
 }
 
-// dnsQName parses the QNAME from a DNS query (labels after the 12-byte header).
+// dnsQName parses the QNAME from a DNS query.
 func dnsQName(query []byte) string {
 	if len(query) <= 12 {
 		return ""
@@ -198,8 +191,7 @@ func dnsQName(query []byte) string {
 	return strings.Join(labels, ".")
 }
 
-// dnsAnswer builds a minimal A-record response pointing at advertiseHost,
-// echoing the question. Returns nil if the question can't be parsed.
+// dnsAnswer builds a minimal A-record response.
 func dnsAnswer(query []byte, advertiseHost string) []byte {
 	if len(query) <= 12 {
 		return nil

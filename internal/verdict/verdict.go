@@ -1,5 +1,4 @@
-// Package verdict defines the closed set of verification outcomes and the
-// reproducible report that accompanies each one.
+// Package verdict defines the closed set + report.
 package verdict
 
 import (
@@ -7,26 +6,23 @@ import (
 	"time"
 )
 
-// Verdict is one of a closed set of verification outcomes. No other value is
-// valid; operational failures map to Inconclusive and bad input to Invalid.
+// Verdict is one of a closed set.
 type Verdict string
 
 const (
-	// Verified means the proof rule was satisfied: all numbered conditions held.
+	// Verified: the proof rule was satisfied.
 	Verified Verdict = "verified"
-	// NotReproduced means the validator ran cleanly but the proof did not happen.
+	// NotReproduced: ran cleanly but no proof.
 	NotReproduced Verdict = "not_reproduced"
-	// Inconclusive means a timeout, auth expiry, instability, or missing control
-	// signal prevented a verdict.
+	// Inconclusive: timeout, auth expiry, instability.
 	Inconclusive Verdict = "inconclusive"
-	// Rejected means a policy violation: out-of-scope host, bad scheme, unsafe
-	// redirect, blocked IP, etc.
+	// Rejected: policy violation.
 	Rejected Verdict = "rejected"
-	// Invalid means malformed or insufficient evidence, or no validator for the type.
+	// Invalid: malformed evidence or no validator.
 	Invalid Verdict = "invalid"
 )
 
-// Valid reports whether v is one of the five closed verdict values.
+// Valid reports whether v is in the closed set.
 func (v Verdict) Valid() bool {
 	switch v {
 	case Verified, NotReproduced, Inconclusive, Rejected, Invalid:
@@ -36,7 +32,7 @@ func (v Verdict) Valid() bool {
 	}
 }
 
-// PolicySummary records the policy decisions that contributed to a verdict.
+// PolicySummary records a verdict's decisions.
 type PolicySummary struct {
 	SchemeOK            bool     `json:"scheme_ok"`
 	InitialOriginPinned bool     `json:"initial_origin_pinned"`
@@ -44,10 +40,10 @@ type PolicySummary struct {
 	Redirects           []string `json:"redirects"`
 }
 
-// ArtifactRefs maps an artifact name to its stored reference (e.g. artifact://...).
+// ArtifactRefs maps artifact name to stored ref.
 type ArtifactRefs map[string]string
 
-// Report is the boring, reproducible record returned for a finding.
+// Report is the reproducible record for a finding.
 type Report struct {
 	FindingID    string          `json:"finding_id"`
 	Type         string          `json:"type"`
@@ -57,6 +53,6 @@ type Report struct {
 	Policy       PolicySummary   `json:"policy"`
 	Artifacts    ArtifactRefs    `json:"artifacts,omitempty"`
 	DecidedAt    time.Time       `json:"decided_at"`
-	// Reason carries a stable code for rejected/invalid/inconclusive verdicts.
+	// Reason: stable code for non-verified verdicts.
 	Reason string `json:"reason,omitempty"`
 }

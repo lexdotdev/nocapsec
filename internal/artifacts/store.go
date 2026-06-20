@@ -1,5 +1,5 @@
-// Package artifacts persists the raw evidence behind every verdict with
-// secrets redacted. Every artifact is addressable by a stable ref.
+// Package artifacts stores evidence;
+// secrets redacted.
 package artifacts
 
 import (
@@ -11,10 +11,10 @@ import (
 	"sync"
 )
 
-// ErrNotFound is returned when an artifact ref does not exist.
+// ErrNotFound means the ref does not exist.
 var ErrNotFound = errors.New("artifacts: not found")
 
-// ArtifactKind categorizes a persisted artifact; values are stable refs.
+// ArtifactKind categorizes a stored artifact.
 type ArtifactKind string
 
 const (
@@ -31,24 +31,25 @@ const (
 	KindVerdict        ArtifactKind = "verdict"
 )
 
-// ArtifactStore writes and reads artifacts, each addressable by a stable ref.
+// ArtifactStore reads/writes by stable ref.
 type ArtifactStore interface {
 	Put(ctx context.Context, jobID string, kind ArtifactKind, data []byte) (ref string, err error)
 	Get(ctx context.Context, ref string) ([]byte, error)
 }
 
-// memStore implements in-memory ArtifactStore with auto-sanitization.
+// memStore is in-memory; sanitizes on write.
 type memStore struct {
 	mu    sync.RWMutex
 	blobs map[string][]byte // ref -> data
 }
 
-// NewStore returns an in-memory ArtifactStore.
+// NewStore returns an in-memory store.
 func NewStore() ArtifactStore {
 	return &memStore{blobs: map[string][]byte{}}
 }
 
-// Put sanitizes data, computes a content-addressed ref, and stores it.
+// Put sanitizes data, stores it under
+// a content-addressed ref.
 func (s *memStore) Put(_ context.Context, jobID string, kind ArtifactKind, data []byte) (string, error) {
 	clean := Sanitize(data)
 	ref := buildRef(jobID, kind, clean)
@@ -58,7 +59,7 @@ func (s *memStore) Put(_ context.Context, jobID string, kind ArtifactKind, data 
 	return ref, nil
 }
 
-// Get retrieves the artifact addressed by ref.
+// Get returns the artifact for ref.
 func (s *memStore) Get(_ context.Context, ref string) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -71,7 +72,7 @@ func (s *memStore) Get(_ context.Context, ref string) ([]byte, error) {
 	return out, nil
 }
 
-// buildRef produces a stable artifact:// ref from job, kind, and content hash.
+// buildRef makes a ref: job, kind, hash.
 func buildRef(jobID string, kind ArtifactKind, data []byte) string {
 	h := sha256.Sum256(data)
 	return fmt.Sprintf("artifact://%s/%s/%s", jobID, kind, hex.EncodeToString(h[:8]))

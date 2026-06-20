@@ -35,14 +35,13 @@ const (
 	correlationIDLength = 20
 )
 
-// tokenRecord tracks a registered correlation ID and its AES secret.
+// tokenRecord holds a token's decryption keys.
 type tokenRecord struct {
-	token     *OASTToken
 	aesKey    []byte
-	secretKey string // hex-encoded secret sent to server
+	secretKey string // hex secret sent to server
 }
 
-// HTTPDoer executes HTTP requests. Injected so tests skip the network.
+// HTTPDoer executes HTTP requests; for tests.
 type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
@@ -56,24 +55,23 @@ type interactshClient struct {
 
 	mu      sync.Mutex
 	privKey *rsa.PrivateKey
-	tokens  map[string]*tokenRecord // keyed by correlationID
+	tokens  map[string]*tokenRecord // by correlationID
 }
 
 // InteractshOption configures the client.
 type InteractshOption func(*interactshClient)
 
-// WithHTTPDoer injects a custom HTTP client (for tests).
+// WithHTTPDoer injects a custom HTTP client.
 func WithHTTPDoer(d HTTPDoer) InteractshOption {
 	return func(c *interactshClient) { c.client = d }
 }
 
-// WithClock injects a custom clock (for tests).
+// WithClock injects a custom clock.
 func WithClock(cl Clock) InteractshOption {
 	return func(c *interactshClient) { c.clock = cl }
 }
 
-// NewInteractshClient constructs an OAST backed by a self-hosted Interactsh
-// server reachable at serverURL with callbacks under the delegated domain.
+// NewInteractshClient: OAST on self-hosted server.
 func NewInteractshClient(serverURL, domain string, opts ...InteractshOption) OAST {
 	c := &interactshClient{
 		serverURL: strings.TrimRight(serverURL, "/"),
@@ -134,7 +132,6 @@ func (c *interactshClient) NewInteraction(ctx context.Context, purpose string) (
 
 	c.mu.Lock()
 	c.tokens[corrID] = &tokenRecord{
-		token:     tok,
 		aesKey:    aesKey,
 		secretKey: secretKey,
 	}

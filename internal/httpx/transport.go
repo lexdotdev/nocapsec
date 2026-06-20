@@ -12,7 +12,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/policy"
 )
 
-// RedirectTracker collects per-hop redirect entries.
+// RedirectTracker collects per-hop entries.
 type RedirectTracker struct {
 	mu   sync.Mutex
 	hops []RedirectHop
@@ -27,21 +27,21 @@ func (rt *RedirectTracker) Snapshot() []RedirectHop {
 	return out
 }
 
-// Reset clears accumulated hops for reuse across requests.
+// Reset clears hops for reuse across requests.
 func (rt *RedirectTracker) Reset() {
 	rt.mu.Lock()
 	defer rt.mu.Unlock()
 	rt.hops = rt.hops[:0]
 }
 
-// PinnedSet stores approved IPs for the in-flight request. The dialer refuses
-// any address whose IP is not in this set.
+// PinnedSet: approved IPs; dialer refuses
+// others (SSRF defense).
 type PinnedSet struct {
 	mu  sync.Mutex
 	ips []net.IP
 }
 
-// Set replaces the pinned IPs with a fresh set (call before each request).
+// Set replaces pinned IPs; call per request.
 func (p *PinnedSet) Set(ips []net.IP) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -49,7 +49,7 @@ func (p *PinnedSet) Set(ips []net.IP) {
 	copy(p.ips, ips)
 }
 
-// Add appends newly-resolved IPs (called per redirect hop).
+// Add appends resolved IPs (per redirect hop).
 func (p *PinnedSet) Add(ips []net.IP) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -67,8 +67,7 @@ func (p *PinnedSet) contains(ip net.IP) bool {
 	return false
 }
 
-// ClientBundle groups the http.Client with its associated pinned IP set and
-// redirect tracker, so callers can pin IPs before each request.
+// ClientBundle: client + pinned IPs + tracker.
 type ClientBundle struct {
 	Client  *http.Client
 	Pinned  *PinnedSet
@@ -76,7 +75,7 @@ type ClientBundle struct {
 	Checker *policy.Checker
 }
 
-// newBundle wires a ClientBundle with the given transport.
+// newBundle wires a ClientBundle on a transport.
 func newBundle(c *policy.Checker, transport *http.Transport) *ClientBundle {
 	jar, _ := cookiejar.New(nil)
 	pinned := &PinnedSet{}
@@ -90,12 +89,12 @@ func newBundle(c *policy.Checker, transport *http.Transport) *ClientBundle {
 	return &ClientBundle{Client: client, Pinned: pinned, Tracker: tracker, Checker: c}
 }
 
-// NewClient builds a ClientBundle with policy-pinned connections.
+// NewClient builds a policy-pinned ClientBundle.
 func NewClient(c *policy.Checker) *ClientBundle {
 	return newBundle(c, &http.Transport{ForceAttemptHTTP2: true})
 }
 
-// NewTimingClient builds a ClientBundle for timing measurements.
+// NewTimingClient builds a ClientBundle for timing.
 func NewTimingClient(c *policy.Checker) *ClientBundle {
 	return newBundle(c, &http.Transport{
 		ForceAttemptHTTP2: false,
@@ -105,8 +104,8 @@ func NewTimingClient(c *policy.Checker) *ClientBundle {
 	})
 }
 
-// pinnedDialer returns a DialContext that connects only to an IP in the
-// approved pinned set.
+// pinnedDialer connects only to pinned IPs
+// (SSRF defense).
 func pinnedDialer(pinned *PinnedSet) func(ctx context.Context, network, addr string) (net.Conn, error) {
 	return func(ctx context.Context, network, addr string) (net.Conn, error) {
 		host, port, err := net.SplitHostPort(addr)
@@ -114,7 +113,7 @@ func pinnedDialer(pinned *PinnedSet) func(ctx context.Context, network, addr str
 			return nil, fmt.Errorf("httpx: bad dial address %q: %w", addr, err)
 		}
 
-		// If the host is already an IP, check directly.
+		// Host is already an IP: check directly.
 		if ip := net.ParseIP(host); ip != nil {
 			if !pinned.contains(ip) {
 				return nil, fmt.Errorf("httpx: dial to non-pinned IP %s rejected", ip)
@@ -122,7 +121,7 @@ func pinnedDialer(pinned *PinnedSet) func(ctx context.Context, network, addr str
 			return (&net.Dialer{}).DialContext(ctx, network, addr)
 		}
 
-		// DNS name: connect to pinned IPs.
+		// DNS name: dial only pinned IPs.
 		pinned.mu.Lock()
 		ips := make([]net.IP, len(pinned.ips))
 		copy(ips, pinned.ips)
@@ -144,9 +143,8 @@ func pinnedDialer(pinned *PinnedSet) func(ctx context.Context, network, addr str
 	}
 }
 
-// redirectChecker returns a CheckRedirect func that re-checks every hop via
-// the policy checker, records each hop in the tracker, and updates the pinned
-// IP set for the new host.
+// redirectChecker re-checks each hop,
+// records it, re-pins IPs.
 func redirectChecker(c *policy.Checker, tracker *RedirectTracker, pinned *PinnedSet) func(*http.Request, []*http.Request) error {
 	return func(req *http.Request, via []*http.Request) error {
 		if len(via) == 0 {
@@ -172,7 +170,7 @@ func redirectChecker(c *policy.Checker, tracker *RedirectTracker, pinned *Pinned
 			return fmt.Errorf("httpx: redirect rejected: %w", err)
 		}
 
-		// Re-resolve and pin IPs for the redirect target.
+		// Re-resolve and pin IPs for the target.
 		safe, urlErr := c.CheckURL(to, policy.PhaseRedirect)
 		if urlErr != nil {
 			return fmt.Errorf("httpx: redirect target check: %w", urlErr)

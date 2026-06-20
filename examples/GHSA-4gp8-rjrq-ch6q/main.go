@@ -16,12 +16,16 @@ func main() {
 		log.Fatal("resolve example path")
 	}
 
-	// link-preview-js refuses to fetch raw-IP / localhost URLs (its SSRF regex),
-	// but happily fetches any TLD'd hostname -- including one that resolves to
-	// loopback. oast.localtest.me resolves to 127.0.0.1 via public DNS, so the
-	// receiver advertises its callback under that name and the library's own
-	// fetch lands on the local receiver. This is exactly the advisory's bug:
-	// a hostname-fronted internal target is fetched server-side.
+	// link-preview-js refuses to fetch raw-IP /
+	// localhost URLs (its SSRF regex), but happily
+	// fetches any TLD'd hostname -- including one
+	// that resolves to loopback. oast.localtest.me
+	// resolves to 127.0.0.1 via public DNS, so the
+	// receiver advertises its callback under that
+	// name and the library's own fetch lands on the
+	// local receiver. This is exactly the advisory's
+	// bug: a hostname-fronted internal target is
+	// fetched server-side.
 	err := exampleutil.Run(context.Background(), filepath.Dir(file), exampleutil.Options{
 		OAST:               true,
 		OASTCallbackHost:   "oast.localtest.me",

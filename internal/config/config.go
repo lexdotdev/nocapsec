@@ -1,4 +1,4 @@
-// Package config implements layered configuration: file < env < flags.
+// Package config layers config: file < env < flags.
 package config
 
 import (
@@ -9,16 +9,16 @@ import (
 	"time"
 )
 
-// Config holds all engine-level settings.
+// Config holds engine-level settings.
 type Config struct {
 	ListenAddr string      `json:"listen_addr"`
 	Pools      PoolSizes   `json:"pools"`
 	Serve      ServeConfig `json:"serve"`
-	// InternalAssessment opts into otherwise-blocked IP ranges.
+	// InternalAssessment allows blocked IP ranges.
 	InternalAssessment bool `json:"internal_assessment"`
 }
 
-// PoolSizes caps workers per capability pool.
+// PoolSizes caps workers per pool.
 type PoolSizes struct {
 	HTTPReplay int `json:"http_replay"`
 	Timing     int `json:"timing"`
@@ -53,7 +53,7 @@ func Defaults() Config {
 	}
 }
 
-// LoadFile reads a JSON config from path, returning Defaults() on error.
+// LoadFile reads JSON config; Defaults() on error.
 func LoadFile(path string) Config {
 	cfg := Defaults()
 	if path == "" {
@@ -68,7 +68,7 @@ func LoadFile(path string) Config {
 	return cfg
 }
 
-// ApplyEnv overlays environment variables on c. Precedence: env > file.
+// ApplyEnv overlays env vars on c (env > file).
 func (c Config) ApplyEnv() Config {
 	if v := os.Getenv("NOCAPSEC_LISTEN_ADDR"); v != "" {
 		c.ListenAddr = v
@@ -83,7 +83,7 @@ func (c Config) ApplyEnv() Config {
 	return c
 }
 
-// envInt reads an env var as a positive int, returning fallback if absent or invalid.
+// envInt reads a positive int env, else fallback.
 func envInt(key string, fallback int) int {
 	v := os.Getenv(key)
 	if v == "" {
@@ -96,7 +96,7 @@ func envInt(key string, fallback int) int {
 	return n
 }
 
-// ApplyFlags overlays CLI flag values. Precedence: flags > env > file.
+// ApplyFlags overlays flags (flags > env > file).
 func (c Config) ApplyFlags(addr string, poolHTTP, poolTiming, poolBrowser, poolOAST int, internal *bool) Config {
 	if addr != "" {
 		c.ListenAddr = addr
@@ -119,7 +119,7 @@ func (c Config) ApplyFlags(addr string, poolHTTP, poolTiming, poolBrowser, poolO
 	return c
 }
 
-// withDefaults fills zero-valued fields from Defaults().
+// withDefaults fills zero fields from Defaults().
 func (c Config) withDefaults() Config {
 	d := Defaults()
 	if c.ListenAddr == "" {

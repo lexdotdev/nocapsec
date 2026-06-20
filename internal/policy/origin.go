@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-// OriginFromURL derives a normalized Origin from a parsed URL.
+// OriginFromURL derives a normalized Origin from u.
 func OriginFromURL(u *url.URL) (Origin, bool) {
 	if u == nil {
 		return Origin{}, false
@@ -39,8 +39,7 @@ func OriginFromURL(u *url.URL) (Origin, bool) {
 	return Origin{Scheme: scheme, Host: host, Port: port}, true
 }
 
-// ParseOrigin parses a raw origin string (e.g. "https://app.example.com") into
-// a normalized Origin, with the same default-port filling as OriginFromURL.
+// ParseOrigin parses a raw string into an Origin.
 func ParseOrigin(raw string) (Origin, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -50,13 +49,13 @@ func ParseOrigin(raw string) (Origin, bool) {
 	if err != nil {
 		return Origin{}, false
 	}
-	// Require an explicit scheme so the default port is unambiguous; a bare
-	// "host:port" parses with an empty scheme.
+	// Require explicit scheme so the default port
+	// is unambiguous.
 	if u.Scheme == "" || u.Host == "" {
 		return Origin{}, false
 	}
-	// Normalize the host like CheckURL does so origins agree. Capture the port
-	// first, since u.Port() reads from u.Host.
+	// Normalize host so origins agree; read port
+	// first (u.Port() reads u.Host).
 	host := strings.ToLower(u.Hostname())
 	host = strings.TrimSuffix(host, ".")
 	port := u.Port()

@@ -72,7 +72,7 @@ func allocateSSRFToken(ctx context.Context, env Env) (*oast.OASTToken, verdict.V
 	return tok, ""
 }
 
-// ssrfReplay injects the OAST URL and sends the request.
+// ssrfReplay injects the OAST URL and sends it.
 func ssrfReplay(ctx context.Context, env Env, ev ssrfOASTEvidence, tok *oast.OASTToken) error {
 	req, err := injectOASTURL(ev.Request, ev.InjectionLocation, tok)
 	if err != nil {
@@ -111,7 +111,7 @@ func ssrfPollAndAttribute(
 		return Result{Verdict: verdict.NotReproduced}
 	}
 
-	// Source attribution: require target infra, reject verifier browser.
+	// Attribution: require target infra, not verifier.
 	targetIPs := resolveTargetIPs(env, job)
 	qualified := oast.RequireSourceNotVerifier(matched, targetIPs, verifierUA())
 	if len(qualified) == 0 {
@@ -133,7 +133,7 @@ type ssrfOASTProof struct {
 	RequireSourceNotVerifier bool   `json:"require_source_not_verifier"`
 }
 
-// validSSRFInjectionLocation: SSRF only supports json_body / query slots.
+// validSSRFInjectionLocation: json_body/query only.
 func validSSRFInjectionLocation(loc InjectionLocation) bool {
 	switch loc.Kind {
 	case kindJSONBody:
@@ -145,7 +145,7 @@ func validSSRFInjectionLocation(loc InjectionLocation) bool {
 	}
 }
 
-// injectOASTURL plants the OAST URL into the declared slot.
+// injectOASTURL plants the OAST URL in the slot.
 func injectOASTURL(req evidence.Request, loc InjectionLocation, tok *oast.OASTToken) (evidence.Request, error) {
 	switch loc.Kind {
 	case kindJSONBody, kindQuery:
@@ -184,7 +184,7 @@ func injectQuery(req evidence.Request, name, value string) (evidence.Request, er
 	return out, nil
 }
 
-// setJSONPointer sets the value at a RFC 6901 JSON pointer.
+// setJSONPointer sets value at an RFC 6901 pointer.
 func setJSONPointer(doc []byte, pointer string, value string) ([]byte, error) {
 	if pointer == "" || pointer[0] != '/' {
 		return nil, fmt.Errorf("invalid JSON pointer %q", pointer)
@@ -203,7 +203,7 @@ func setJSONPointer(doc []byte, pointer string, value string) ([]byte, error) {
 	return json.Marshal(root)
 }
 
-// splitPointer splits "/a/b" into ["a","b"] with ~1/~0 unescaping.
+// splitPointer splits a pointer, unescaping ~1/~0.
 func splitPointer(pointer string) []string {
 	raw := pointer[1:]
 	if raw == "" {
@@ -218,7 +218,7 @@ func splitPointer(pointer string) []string {
 	return parts
 }
 
-// setPath walks into a nested map and sets the leaf.
+// setPath walks a nested map and sets the leaf.
 func setPath(root any, tokens []string, value string) error {
 	current := root
 	for i, tok := range tokens {
@@ -239,7 +239,7 @@ func setPath(root any, tokens []string, value string) error {
 	return fmt.Errorf("empty token path")
 }
 
-// resolveTargetIPs extracts IPs from the target for attribution.
+// resolveTargetIPs returns IPs for attribution.
 func resolveTargetIPs(env Env, job Job) []string {
 	target := job.Finding.Target
 	if target.ExpectedOrigin == "" {
@@ -256,7 +256,7 @@ func resolveTargetIPs(env Env, job Job) []string {
 	return ips
 }
 
-// verifierUA is the browser UA substring for attribution filtering.
+// verifierUA is the UA substring of the verifier.
 func verifierUA() string { return "HeadlessChrome" }
 
 func init() { Register(ssrfOAST{}) }

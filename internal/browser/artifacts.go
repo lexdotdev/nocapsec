@@ -9,9 +9,8 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
 )
 
-// captureArtifacts takes a screenshot and DOM snapshot. Called ONLY after a
-// proof signal, never speculatively. Returns artifact refs for inclusion in
-// BrowserResult.
+// captureArtifacts grabs screenshot + DOM,
+// only on proof.
 func captureArtifacts(ctx context.Context, store artifacts.ArtifactStore, jobID string) (screenshotRef, domRef string) {
 	if store == nil {
 		return "", ""

@@ -32,8 +32,8 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 		return Result{Verdict: verdict.Invalid}, nil
 	}
 
-	// Engine-owned floor: always compare at least status + body_hash_fuzzy so a
-	// client cannot weaken the proof bar below it.
+	// Engine-owned floor: status+body_hash_fuzzy;
+	// clients can't weaken it.
 	dims := unionDims(ParseDimensions(proof.Compare), DimStatus, DimBodyHashFuzzy)
 
 	reps := proof.Repetitions
@@ -44,7 +44,7 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
 
 	var baselineRedirects []string
-	// Run multiple repetitions to check stability.
+	// Repeat to check stability.
 	for i := range reps {
 		caps, err := replayTriple(ctx, bundle, arms)
 		if err != nil {
@@ -60,12 +60,11 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 		falseDiffers := !Similar(baselineFP, falseFP, dims)
 
 		if !trueSimilar || !falseDiffers {
-			// If this is the first rep and we already fail, the
-			// pattern simply doesn't hold.
+			// First-rep failure: pattern doesn't hold.
 			if i == 0 {
 				return Result{Verdict: verdict.NotReproduced}, nil
 			}
-			// Stability broken on a later rep -> inconclusive.
+			// Later-rep instability -> inconclusive.
 			return Result{Verdict: verdict.Inconclusive}, nil
 		}
 	}
@@ -89,15 +88,14 @@ type sqliBooleanProofBlock struct {
 	FalseDiffersFromBaseline bool     `json:"false_differs_from_baseline"`
 }
 
-// booleanArms holds the three request arms the engine builds from base_request.
+// booleanArms holds three arms from base_request.
 type booleanArms struct {
 	baseline  evidence.Request
 	trueCond  evidence.Request
 	falseCond evidence.Request
 }
 
-// buildBooleanArms plants each payload value into the declared slot of
-// base_request. A missing payload key or an inject error means invalid.
+// buildBooleanArms plants each payload in the slot.
 func buildBooleanArms(ev sqliBooleanEvidence) (booleanArms, bool) {
 	loc := ev.Injection.Location
 	baseVal, ok1 := ev.Injection.Payloads["baseline"]

@@ -8,9 +8,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/validators"
 )
 
-// Capability is the engine-local alias; the canonical definitions live in
-// internal/validators so a new validator declares its pool without editing
-// engine routing.
+// Capability aliases validators.Capability.
 type Capability = validators.Capability
 
 const (
@@ -30,22 +28,22 @@ type Task struct {
 	Run        func(ctx context.Context) error
 }
 
-// poolItem carries a Task plus the channel its result is reported on.
+// poolItem carries a Task plus its result channel.
 type poolItem struct {
 	ctx  context.Context
 	task Task
 	done chan<- error
 }
 
-// pool is a bounded set of worker goroutines fed by an in-memory channel.
-// One per Capability.
+// pool is a bounded worker set fed by a channel;
+// one per Capability.
 type pool struct {
 	items chan poolItem
 	wg    sync.WaitGroup
 	stop  sync.Once
 }
 
-// newPool starts the worker goroutines draining an in-memory queue.
+// newPool starts worker goroutines draining queue.
 func newPool(workers int) *pool {
 	if workers < 1 {
 		workers = 1
@@ -65,7 +63,7 @@ func (p *pool) work() {
 	}
 }
 
-// submit enqueues t and blocks until a worker finishes it or ctx is canceled.
+// submit enqueues t, blocks until done or canceled.
 func (p *pool) submit(ctx context.Context, t Task) error {
 	done := make(chan error, 1) // buffered so the worker never blocks reporting
 	select {
@@ -81,14 +79,14 @@ func (p *pool) submit(ctx context.Context, t Task) error {
 	}
 }
 
-// close stops accepting work and waits for in-flight tasks to drain.
+// close stops work and drains in-flight tasks.
 func (p *pool) close() {
 	p.stop.Do(func() { close(p.items) })
 	p.wg.Wait()
 }
 
-// runTask runs t.Run, turning a panic into an error so one job's fault never
-// takes down the process or other pools.
+// runTask recovers panics so one job can't
+// crash the pool.
 func runTask(ctx context.Context, t Task) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

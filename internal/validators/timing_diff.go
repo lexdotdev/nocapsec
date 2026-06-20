@@ -12,15 +12,13 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// timingEvidence is shared by sqli.time_based and command_injection.time_based.
-// The engine builds control/low/high from one base_request by planting each
-// payload value into the declared injection slot.
+// timingEvidence: engine builds arms from one base.
 type timingEvidence struct {
 	BaseRequest evidence.Request  `json:"base_request"`
 	Injection   injectionEvidence `json:"injection"`
 }
 
-// timingProof configures the timing differential measurement.
+// timingProof configures the timing measurement.
 type timingProof struct {
 	Repetitions        int   `json:"repetitions"`
 	MinMedianDeltaMS   int64 `json:"min_median_delta_ms"`
@@ -42,7 +40,7 @@ func (p timingProof) minDelta() int64 {
 	return p.MinMedianDeltaMS
 }
 
-// timingSample records one measurement from a timed replay.
+// timingSample is one timed-replay measurement.
 type timingSample struct {
 	label      string
 	durationMS int64
@@ -56,9 +54,7 @@ const (
 	labelDelayHigh = "delay_high"
 )
 
-// timingDifferential runs the full timing proof: randomized measurement, median
-// analysis, control stability, body/status similarity. Shared between
-// sqli.time_based and command_injection.time_based.
+// timingDifferential runs the full timing proof.
 func timingDifferential(ctx context.Context, env Env, ev timingEvidence, proof timingProof) (Result, error) {
 	bundle := httpx.NewTimingClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
 
@@ -71,15 +67,13 @@ func timingDifferential(ctx context.Context, env Env, ev timingEvidence, proof t
 	return analyzeTimingSamples(samples, proof), nil
 }
 
-// labeledReq is one timing arm: a label and the request the engine built for it.
+// labeledReq is one timing arm: label plus request.
 type labeledReq struct {
 	label string
 	req   evidence.Request
 }
 
-// buildTimingArms plants each payload value into the declared slot of
-// base_request, producing the control/low/high arms. A missing payload key or
-// an inject error (slot absent from base_request) is an error.
+// buildTimingArms plants each payload as one arm.
 func buildTimingArms(ev timingEvidence) ([]labeledReq, error) {
 	loc := ev.Injection.Location
 	out := make([]labeledReq, 0, 3)
@@ -97,16 +91,15 @@ func buildTimingArms(ev timingEvidence) ([]labeledReq, error) {
 	return out, nil
 }
 
-// measureTimingWithClock runs control/low/high requests in randomized order,
-// timing each via the injected Clock for deterministic tests.
+// measureTimingWithClock times arms, random order.
 func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.ClientBundle, ev timingEvidence, reps int) ([]timingSample, error) {
-	// Build the three labeled arms once, before the schedule loop.
+	// Build the three arms once, before scheduling.
 	reqs, err := buildTimingArms(ev)
 	if err != nil {
 		return nil, err
 	}
 
-	// Build schedule: each request repeated reps times, then shuffled.
+	// Each request repeated reps times, then shuffled.
 	schedule := make([]int, 0, len(reqs)*reps)
 	for i := range reqs {
 		for range reps {
@@ -141,7 +134,7 @@ func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.Clie
 	return samples, nil
 }
 
-// analyzeTimingSamples applies the timing proof rule to collected samples.
+// analyzeTimingSamples applies the proof rule.
 func analyzeTimingSamples(samples []timingSample, proof timingProof) Result {
 	byLabel := map[string][]timingSample{}
 	for _, s := range samples {
@@ -156,17 +149,17 @@ func analyzeTimingSamples(samples []timingSample, proof timingProof) Result {
 		return Result{Verdict: verdict.Inconclusive}
 	}
 
-	// Check control stability: if variance is too high, inconclusive.
+	// Unstable control variance -> inconclusive.
 	if !controlStable(controlSamples) {
 		return Result{Verdict: verdict.Inconclusive}
 	}
 
-	// Check status code comparability across variants.
+	// Status codes must be comparable across arms.
 	if !statusCodesComparable(controlSamples, lowSamples, highSamples) {
 		return Result{Verdict: verdict.Inconclusive}
 	}
 
-	// Check body similarity if required.
+	// Body similarity, if required.
 	if proof.RequireBodySimilar && !bodiesSimilar(lowSamples, highSamples) {
 		return Result{Verdict: verdict.Inconclusive}
 	}
@@ -199,8 +192,7 @@ type timingProofBlock struct {
 	Repetitions  int   `json:"repetitions"`
 }
 
-// controlStable checks that control latency variance is within bounds.
-// A coefficient of variation above 0.5 signals an unstable target.
+// controlStable: false when latency CV exceeds 0.5.
 func controlStable(samples []timingSample) bool {
 	if len(samples) < 2 {
 		return true
@@ -222,11 +214,11 @@ func controlStable(samples []timingSample) bool {
 	}
 	variance := varianceSum / int64(len(durations))
 
-	// CV > 0.5 is unstable. Compare variance > (0.25 * mean^2).
+	// CV > 0.5 is unstable: variance > 0.25 * mean^2.
 	return variance*4 <= mean*mean
 }
 
-// statusCodesComparable checks that all variants returned the same mode status.
+// statusCodesComparable: arms share a mode status.
 func statusCodesComparable(control, low, high []timingSample) bool {
 	cMode := modeStatus(control)
 	lMode := modeStatus(low)
@@ -248,8 +240,7 @@ func modeStatus(samples []timingSample) int {
 	return best
 }
 
-// bodiesSimilar checks that low and high responses have similar structure
-// using the diff fingerprint on the first sample of each.
+// bodiesSimilar compares low/high via fingerprint.
 func bodiesSimilar(low, high []timingSample) bool {
 	if len(low) == 0 || len(high) == 0 {
 		return false
@@ -269,9 +260,7 @@ func medianDuration(samples []timingSample) int64 {
 	return ds[len(ds)/2]
 }
 
-// parseTimingEvidence unmarshals and validates the timing evidence and proof.
-// A bad base_request, an invalid injection location, a missing payload key, or
-// an inject error (slot absent from base_request) all yield invalid.
+// parseTimingEvidence unmarshals, validates job.
 func parseTimingEvidence(finding evidence.Finding) (timingEvidence, timingProof, verdict.Verdict) {
 	var ev timingEvidence
 	if err := json.Unmarshal(finding.Evidence, &ev); err != nil {

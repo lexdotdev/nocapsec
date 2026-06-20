@@ -1,4 +1,4 @@
-// Package evidence parses an client finding into a canonical, validated Finding.
+// Package evidence: canonical, validated Findings.
 package evidence
 
 import (
@@ -6,7 +6,7 @@ import (
 	"errors"
 )
 
-// ErrInvalid marks malformed or insufficient evidence (Invalid verdict).
+// ErrInvalid marks malformed/insufficient evidence.
 var ErrInvalid = errors.New("evidence: invalid finding")
 
 // Header is a single request/response header.
@@ -15,8 +15,8 @@ type Header struct {
 	Value string `json:"value"`
 }
 
-// Request is an exact request, replayed verbatim except for mutation slots.
-// Body is the raw wire body (a JSON string), not base64.
+// Request: replayed verbatim except slots.
+// Body is raw wire, not base64.
 type Request struct {
 	Method  string   `json:"method"`
 	URL     string   `json:"url"`
@@ -24,7 +24,7 @@ type Request struct {
 	Body    string   `json:"body,omitempty"`
 }
 
-// Target carries the expected origin and allowlists that bound a finding.
+// Target: origin + allowlists bounding a finding.
 type Target struct {
 	ExpectedOrigin string   `json:"expected_origin"`
 	AllowedHosts   []string `json:"allowed_hosts"`
@@ -32,23 +32,25 @@ type Target struct {
 	AllowedPorts   []int    `json:"allowed_ports"`
 }
 
-// AuthRef references an auth state by id; raw credentials never appear here.
+// AuthRef references auth by id.
+// Raw credentials never appear.
 type AuthRef struct {
 	Required    bool   `json:"required"`
 	AuthStateID string `json:"auth_state_id,omitempty"`
 	Role        string `json:"role,omitempty"`
 }
 
-// MutationSlots maps a slot name (e.g. "nonce") to the only position the
-// verifier may write (param name, JSON pointer, body field).
+// MutationSlots: slot -> only position
+// the verifier may write.
 type MutationSlots map[string]string
 
-// SideEffects declares how to clean up after a state-changing finding.
+// SideEffects declares cleanup for a finding
+// that changes state.
 type SideEffects struct {
 	Cleanup []Request `json:"cleanup,omitempty"`
 }
 
-// Finding is the normalized, validated finding the pipeline operates on.
+// Finding is the validated finding to run.
 type Finding struct {
 	FindingID   string          `json:"finding_id"`
 	Type        string          `json:"type"`

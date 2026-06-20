@@ -1,4 +1,4 @@
-// Package nocapsec is the public, embeddable API for the nocapsec proof engine.
+// Package nocapsec is the proof-engine API.
 package nocapsec
 
 import (
@@ -9,13 +9,13 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// Report is the reproducible record returned for a finding.
+// Report is the record returned for a finding.
 type Report = verdict.Report
 
-// Verdict is one of the five closed verification outcomes.
+// Verdict is one of the closed verdict set.
 type Verdict = verdict.Verdict
 
-// The closed verdict set, re-exported so callers never import internal packages.
+// Closed verdict set, re-exported for callers.
 const (
 	Verified      = verdict.Verified
 	NotReproduced = verdict.NotReproduced
@@ -24,20 +24,18 @@ const (
 	Invalid       = verdict.Invalid
 )
 
-// ErrNotImplemented signals a Task dispatched with no Run func.
+// ErrNotImplemented means a Task has no Run func.
 var ErrNotImplemented = engine.ErrNotImplemented
 
-// Config holds the engine's policy defaults and concurrency limits.
+// Config holds defaults + concurrency limits.
 type Config = engine.Config
 
-// Engine runs the verification pipeline in-process. It is safe for concurrent
-// use: Verify may be called from many goroutines against the shared worker pools.
+// Engine runs the pipeline; concurrency-safe.
 type Engine struct {
 	engine *engine.Engine
 }
 
-// New builds an Engine from cfg, wiring policy, validators, and the in-process
-// worker pools. Call Close to drain them.
+// New builds an Engine; call Close to drain pools.
 func New(cfg Config) (*Engine, error) {
 	eng, err := engine.New(cfg)
 	if err != nil {
@@ -46,20 +44,17 @@ func New(cfg Config) (*Engine, error) {
 	return &Engine{engine: eng}, nil
 }
 
-// Verify runs the full pipeline for one finding and returns its terminal
-// Report. finding is the finding JSON (the POST /verify body).
+// Verify runs the pipeline for one finding (JSON).
 func (e *Engine) Verify(ctx context.Context, finding []byte) (Report, error) {
 	return e.engine.Verify(ctx, finding)
 }
 
-// Handler returns the HTTP API (POST /verify, GET /verify/{id},
-// GET /verify/{id}/artifacts) backed by this Engine, for embedders that expose
-// the service over HTTP. cmd/nocapsec serve mounts it.
+// Handler returns the HTTP API for this Engine.
 func (e *Engine) Handler() http.Handler {
 	return e.engine.Handler()
 }
 
-// Close drains and stops the worker pools.
+// Close drains and stops the pools.
 func (e *Engine) Close() error {
 	return e.engine.Close()
 }

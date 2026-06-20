@@ -16,8 +16,10 @@ func main() {
 		log.Fatal("resolve example path")
 	}
 
-	// Pure HTTP: replay baseline / true (1=1) / false (1=2) and compare the
-	// response fingerprints. baseline and true must match; false must differ.
+	// Pure HTTP: replay baseline / true (1=1) /
+	// false (1=2) and compare the response
+	// fingerprints. baseline and true must match;
+	// false must differ.
 	err := exampleutil.Run(context.Background(), filepath.Dir(file), exampleutil.Options{
 		InternalAssessment: true,
 		Timeout:            30 * time.Second,

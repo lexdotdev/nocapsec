@@ -10,9 +10,8 @@ import (
 	"time"
 )
 
-// ConnectProxy is an HTTP CONNECT proxy that enforces scheme/host/port/IP
-// policy at the CONNECT request without decrypting TLS. It delegates host/IP
-// validation to a Checker.
+// ConnectProxy enforces policy per CONNECT;
+// no TLS decrypt.
 type ConnectProxy struct {
 	Checker  *Checker
 	listener net.Listener
@@ -20,8 +19,8 @@ type ConnectProxy struct {
 	once     sync.Once
 }
 
-// NewConnectProxy builds a policy-enforcing CONNECT proxy bound to a random
-// localhost port. Call Addr after Start, Shutdown when done.
+// NewConnectProxy binds a CONNECT proxy to a
+// random localhost port.
 func NewConnectProxy(c *Checker) (*ConnectProxy, error) {
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -42,10 +41,10 @@ func (p *ConnectProxy) Start() {
 	})
 }
 
-// Addr returns the proxy's listen address as "host:port".
+// Addr returns the listen address as "host:port".
 func (p *ConnectProxy) Addr() string { return p.listener.Addr().String() }
 
-// URL returns the proxy address as an HTTP URL for chromedp.
+// URL returns the proxy address as an HTTP URL.
 func (p *ConnectProxy) URL() string { return "http://" + p.Addr() }
 
 // Shutdown gracefully stops the proxy.
@@ -53,7 +52,7 @@ func (p *ConnectProxy) Shutdown(ctx context.Context) error {
 	return p.srv.Shutdown(ctx)
 }
 
-// ServeHTTP handles CONNECT requests; non-CONNECT is rejected.
+// ServeHTTP handles CONNECT; else rejected.
 func (p *ConnectProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodConnect {
 		http.Error(w, "only CONNECT supported", http.StatusMethodNotAllowed)
@@ -83,7 +82,7 @@ func (p *ConnectProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect to one of the pinned IPs.
+	// Dial a policy-pinned IP.
 	var upstream net.Conn
 	for _, ip := range safe.PinnedIP {
 		dialAddr := net.JoinHostPort(ip.String(), port)
@@ -110,14 +109,14 @@ func (p *ConnectProxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	defer client.Close() //nolint:errcheck // best-effort cleanup
 
-	// Write 200 on the raw connection after hijacking.
+	// Write 200 on the raw connection.
 	_, _ = fmt.Fprint(buf, "HTTP/1.1 200 Connection Established\r\n\r\n")
 	_ = buf.Flush()
 
 	relay(client, upstream)
 }
 
-// relay copies bytes bidirectionally between a and b.
+// relay copies bytes bidirectionally between conns.
 func relay(client, upstream net.Conn) {
 	var wg sync.WaitGroup
 	wg.Add(2)

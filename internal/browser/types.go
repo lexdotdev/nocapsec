@@ -1,7 +1,5 @@
-// Package browser drives Chromium over the Chrome DevTools Protocol to prove
-// client-side vulnerabilities. Per job it uses an ephemeral profile, injects
-// auth only for the pinned origin, routes egress through the policy proxy, and
-// captures navigation, dialogs, console, network, and screenshots/DOM on proof.
+// Package browser drives Chromium via CDP
+// for client-side proof.
 package browser
 
 import (
@@ -10,21 +8,21 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 )
 
-// Action is one declared post-load step (click, wait). Bounded, not a script.
+// Action is one bounded post-load step.
 type Action struct {
 	Kind string            `json:"kind"`
 	Args map[string]string `json:"args,omitempty"`
 }
 
-// NavEvent is a committed frame navigation; its origin is re-checked at
-// PhaseBrowserNav.
+// NavEvent is a committed frame nav;
+// origin re-checked.
 type NavEvent struct {
 	Origin string `json:"origin"`
 	URL    string `json:"url"`
 }
 
-// DialogEvent records a JS dialog before auto-accept. FromVerifierHook marks
-// our own instrumentation so it never counts as proof.
+// DialogEvent records a JS dialog;
+// hook events never count as proof.
 type DialogEvent struct {
 	Type             string `json:"type"`
 	Message          string `json:"message"`
@@ -32,19 +30,19 @@ type DialogEvent struct {
 	FromVerifierHook bool   `json:"from_verifier_hook"`
 }
 
-// ConsoleEvent is a captured Runtime.consoleAPICalled message.
+// ConsoleEvent is a captured console message.
 type ConsoleEvent struct {
 	Text      string `json:"text"`
 	SourceURL string `json:"source_url"`
 }
 
-// NetEvent is a captured Network.requestWillBeSent event.
+// NetEvent is a captured network request.
 type NetEvent struct {
 	URL    string `json:"url"`
 	Method string `json:"method"`
 }
 
-// BrowserJob is a single browser proof attempt.
+// BrowserJob is one browser proof attempt.
 type BrowserJob struct {
 	Entrypoint    evidence.Request `json:"entrypoint"`
 	AuthStateID   string           `json:"auth_state_id,omitempty"`
@@ -54,8 +52,8 @@ type BrowserJob struct {
 	AcceptSignals []string         `json:"accept_signals,omitempty"`
 }
 
-// BrowserResult is a BrowserJob's outcome. ScreenshotRef and DOMSnapshotRef are
-// set only after a proof signal, never speculatively.
+// BrowserResult is a job outcome;
+// refs set only on proof.
 type BrowserResult struct {
 	Navigation     []NavEvent     `json:"navigation,omitempty"`
 	Dialogs        []DialogEvent  `json:"dialogs,omitempty"`
@@ -66,7 +64,7 @@ type BrowserResult struct {
 	DOMSnapshotRef string         `json:"dom_snapshot_ref,omitempty"`
 }
 
-// BrowserRunner executes a BrowserJob, provided to validators via the Env.
+// BrowserRunner executes a BrowserJob.
 type BrowserRunner interface {
 	Run(ctx context.Context, job BrowserJob) (BrowserResult, error)
 }

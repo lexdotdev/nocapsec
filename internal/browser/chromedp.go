@@ -17,7 +17,7 @@ const (
 	settleDelay      = 750 * time.Millisecond
 )
 
-// runner drives Chromium via CDP to execute a BrowserJob.
+// runner drives Chromium via CDP for a BrowserJob.
 type runner struct {
 	proxyURL string
 	execPath string
@@ -27,22 +27,22 @@ type runner struct {
 // RunnerOption configures a runner.
 type RunnerOption func(*runner)
 
-// WithProxyURL routes browser egress through the policy CONNECT proxy.
+// WithProxyURL routes egress via the policy proxy.
 func WithProxyURL(u string) RunnerOption {
 	return func(r *runner) { r.proxyURL = u }
 }
 
-// WithExecPath pins the browser binary (e.g. macOS Chrome, not on PATH).
+// WithExecPath pins the browser binary.
 func WithExecPath(p string) RunnerOption {
 	return func(r *runner) { r.execPath = p }
 }
 
-// WithArtifactStore enables proof-time screenshot/DOM capture.
+// WithArtifactStore enables proof-time capture.
 func WithArtifactStore(s artifacts.ArtifactStore) RunnerOption {
 	return func(r *runner) { r.store = s }
 }
 
-// NewRunner returns a BrowserRunner backed by chromedp.
+// NewRunner returns a chromedp BrowserRunner.
 func NewRunner(opts ...RunnerOption) BrowserRunner {
 	r := &runner{}
 	for _, o := range opts {
@@ -83,8 +83,7 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 		}
 	}
 
-	// Let client-side redirects and async dialog/console events settle before
-	// snapshotting; otherwise we capture the page mid-flight.
+	// Let async events settle before snapshotting.
 	_ = chromedp.Run(taskCtx, chromedp.Sleep(settleDelay)) // best-effort settle
 
 	navs, dialogs, console, netEvts := ec.snapshot()
@@ -110,8 +109,7 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 	return result, nil
 }
 
-// hasProofSignal reports whether the collected events contain a signal the job
-// is configured to accept.
+// hasProofSignal reports an accepted signal.
 func hasProofSignal(job BrowserJob, dialogs []DialogEvent, console []ConsoleEvent) bool {
 	for _, sig := range job.AcceptSignals {
 		switch sig {
@@ -134,7 +132,7 @@ func waitAction(_ string) chromedp.Action {
 	return chromedp.WaitReady("body", chromedp.ByQuery)
 }
 
-// runAction interprets a declared post-load Action.
+// runAction interprets a post-load Action.
 func runAction(act Action) chromedp.Action {
 	switch act.Kind {
 	case "click":

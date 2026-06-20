@@ -1,7 +1,5 @@
-// Package validators runs per-type verification. Each finding type has a
-// validator that exercises live infrastructure (HTTP client, browser, OAST)
-// through the mandatory policy gate and returns a verdict. Validators sit above
-// execution in the layering.
+// Package validators runs per-type verification
+// behind the policy gate.
 package validators
 
 import (
@@ -19,30 +17,29 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// Clock abstracts time so timing validators and tests are deterministic.
+// Clock abstracts time for deterministic timing.
 type Clock interface {
 	Now() time.Time
 	Since(time.Time) time.Duration
 }
 
-// PolicyEnforcer is the validator-facing policy gate plus per-job browser-proxy
-// wiring. Every URL and redirect goes through it.
+// PolicyEnforcer gates every URL, redirect, and
+// browser proxy.
 type PolicyEnforcer interface {
 	CheckURL(raw string, phase policy.Phase) (*policy.SafeURL, error)
 	CheckRedirect(from, to string) error
 	BrowserProxyFor(job Job) (proxyURL string, cleanup func(), err error)
-	// Checker returns the underlying policy checker for httpx bundles.
+	// Checker exposes the policy checker to httpx.
 	Checker() *policy.Checker
 }
 
-// Job is one unit of verification work: the normalized finding plus the per-run
-// nonce injected into mutation slots.
+// Job is one finding plus its per-run nonce.
 type Job struct {
 	Finding evidence.Finding
 	Nonce   string
 }
 
-// Env is the infrastructure a validator runs against, built once per worker.
+// Env is per-worker infrastructure for a validator.
 type Env struct {
 	Browser    browser.BrowserRunner
 	OAST       oast.OAST
@@ -53,9 +50,7 @@ type Env struct {
 	PollConfig *oast.PollConfig // nil -> validator default
 }
 
-// Capability names the worker pool a validator needs. Defined here (not in
-// engine) so a new validator file registers its capability without editing
-// engine routing — the engine maps these to its pools.
+// Capability names the worker pool needed.
 type Capability string
 
 const (
@@ -65,15 +60,14 @@ const (
 	CapOAST       Capability = "oast"
 )
 
-// Result is a validator outcome: verdict plus, when verified, a type-specific
-// proof block and any observed redirect hops.
+// Result is a verdict with optional proof and hops.
 type Result struct {
 	Verdict   verdict.Verdict
-	Proof     json.RawMessage // embedded in Report.Proof when Verified
-	Redirects []string        // observed redirect hops, for the report
+	Proof     json.RawMessage // set only when Verified
+	Redirects []string        // observed redirect hops
 }
 
-// proofJSON marshals a proof block; marshaling simple structs cannot fail.
+// proofJSON marshals a proof block.
 func proofJSON(v any) json.RawMessage { b, _ := json.Marshal(v); return b } //nolint:errchkjson // simple struct
 
 func replaceNonceSlot(s, nonce string) string {
@@ -82,10 +76,10 @@ func replaceNonceSlot(s, nonce string) string {
 	return strings.ReplaceAll(s, "%7b%7bnonce%7d%7d", nonce)
 }
 
-// Validator verifies a single finding type, registered in init, found by Type.
+// Validator verifies a single finding type.
 type Validator interface {
 	Type() string
-	// Capability the validator dispatches to.
+	// Cap is the capability dispatched to.
 	Cap() Capability
 	Validate(ctx context.Context, job Job, env Env) (Result, error)
 }

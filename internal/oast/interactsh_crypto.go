@@ -26,7 +26,7 @@ func (c *interactshClient) ensureKey() error {
 	return nil
 }
 
-// decryptAESKey RSA-OAEP decrypts the server's session key.
+// decryptAESKey RSA-OAEP decrypts session key.
 func (c *interactshClient) decryptAESKey(encrypted string) ([]byte, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
 	if err != nil {
@@ -35,7 +35,7 @@ func (c *interactshClient) decryptAESKey(encrypted string) ([]byte, error) {
 	return rsa.DecryptOAEP(sha256.New(), rand.Reader, c.privKey, ciphertext, nil)
 }
 
-// decryptPayload AES-CFB decrypts a base64 interaction payload.
+// decryptPayload AES-CFB decrypts a base64 payload.
 func decryptPayload(key []byte, b64data string) ([]byte, error) {
 	data, err := base64.StdEncoding.DecodeString(b64data)
 	if err != nil {
@@ -64,7 +64,7 @@ func randomCorrelationID() (string, error) {
 	return fmt.Sprintf("%x", b), nil
 }
 
-// randomBytes returns n cryptographically random bytes.
+// randomBytes returns n crypto-random bytes.
 func randomBytes(n int) ([]byte, error) {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {

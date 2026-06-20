@@ -7,13 +7,14 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/validators"
 )
 
-// enforcer satisfies validators.PolicyEnforcer by delegating to a policy.Checker
-// built from the finding's target policy and a resolver.
+// enforcer is a PolicyEnforcer backed by
+// a policy.Checker.
 type enforcer struct {
 	checker *policy.Checker
 }
 
-// NewEnforcer builds a PolicyEnforcer from a URLPolicy and a Resolver.
+// NewEnforcer builds a PolicyEnforcer from
+// policy and resolver.
 func NewEnforcer(p policy.URLPolicy, r policy.Resolver) validators.PolicyEnforcer {
 	return &enforcer{checker: policy.NewChecker(p, r)}
 }
@@ -26,8 +27,8 @@ func (e *enforcer) CheckRedirect(from, to string) error {
 	return e.checker.CheckRedirect(from, to)
 }
 
-// BrowserProxyFor starts a local CONNECT proxy enforcing policy on every
-// tunnel. Returns the proxy URL, a cleanup func, and any error.
+// BrowserProxyFor starts a local CONNECT proxy
+// enforcing policy.
 func (e *enforcer) BrowserProxyFor(_ validators.Job) (string, func(), error) {
 	proxy, err := policy.NewConnectProxy(e.checker)
 	if err != nil {
@@ -42,7 +43,8 @@ func (e *enforcer) BrowserProxyFor(_ validators.Job) (string, func(), error) {
 
 func (e *enforcer) Checker() *policy.Checker { return e.checker }
 
-// EnforcerFromTarget builds a PolicyEnforcer from target scope fields.
+// EnforcerFromTarget builds a PolicyEnforcer
+// from target scope.
 func EnforcerFromTarget(t targetPolicy, r policy.Resolver) validators.PolicyEnforcer {
 	p := policy.URLPolicy{
 		AllowedSchemes:     t.AllowedSchemes,
@@ -62,7 +64,8 @@ func EnforcerFromTarget(t targetPolicy, r policy.Resolver) validators.PolicyEnfo
 	return NewEnforcer(p, r)
 }
 
-// targetPolicy is the subset of evidence.Target the enforcer reads.
+// targetPolicy is the evidence.Target subset
+// the enforcer reads.
 type targetPolicy struct {
 	AllowedSchemes     []string
 	AllowedHosts       []string

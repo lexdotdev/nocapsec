@@ -1,6 +1,8 @@
-// Package exampleutil is the shared harness that runs each nocapsec example:
-// it loads the example's evidence.json, wires the optional browser/OAST/auth
-// dependencies, and prints the verification report.
+// Package exampleutil is the shared harness that
+// runs each nocapsec example: it loads the
+// example's evidence.json, wires the optional
+// browser/OAST/auth dependencies, and prints the
+// verification report.
 package exampleutil
 
 import (
@@ -28,28 +30,38 @@ type Options struct {
 	InternalAssessment bool
 	ExternalHTTPAddr   string
 	Timeout            time.Duration
-	// AuthStateFile, when set, loads an auth-state JSON array (same shape as the
-	// nocapsec -authstate flag) into an encrypted in-memory store for
-	// auth-backed validators such as idor.read.
+	// AuthStateFile, when set, loads an auth-state
+	// JSON array (same shape as the nocapsec
+	// -authstate flag) into an encrypted in-memory
+	// store for auth-backed validators such as
+	// idor.read.
 	AuthStateFile string
-	// OASTDNSAddr fixes the embedded OAST receiver's UDP DNS listen address
-	// (default 127.0.0.1:0). Set a fixed port when an external resolver must
-	// forward a zone to the receiver (e.g. command_injection.oast).
+	// OASTDNSAddr fixes the embedded OAST receiver's
+	// UDP DNS listen address (default 127.0.0.1:0).
+	// Set a fixed port when an external resolver
+	// must forward a zone to the receiver (e.g.
+	// command_injection.oast).
 	OASTDNSAddr string
-	// OASTAdvertiseHost is the A-record reply / callback host (default 127.0.0.1).
+	// OASTAdvertiseHost is the A-record reply /
+	// callback host (default 127.0.0.1).
 	OASTAdvertiseHost string
-	// OASTCallbackHost overrides the host in the receiver's HTTP callback URL
-	// (port preserved). Set a loopback-resolving name such as oast.localtest.me
-	// when the target rejects raw-IP callback URLs (e.g. an SSRF guard).
+	// OASTCallbackHost overrides the host in the
+	// receiver's HTTP callback URL (port preserved).
+	// Set a loopback-resolving name such as
+	// oast.localtest.me when the target rejects
+	// raw-IP callback URLs (e.g. an SSRF guard).
 	OASTCallbackHost string
-	// EvidenceHook, when set, transforms the raw evidence JSON before it is
-	// verified. Use it to fill in values only known at run time, such as a fresh
-	// session cookie obtained by logging into the target.
+	// EvidenceHook, when set, transforms the raw
+	// evidence JSON before it is verified. Use it to
+	// fill in values only known at run time, such as
+	// a fresh session cookie obtained by logging
+	// into the target.
 	EvidenceHook func(ctx context.Context, evidence []byte) ([]byte, error)
 }
 
-// Run loads the example's evidence, wires the requested dependencies, verifies,
-// and prints the report.
+// Run loads the example's evidence, wires the
+// requested dependencies, verifies, and prints the
+// report.
 //
 //nolint:gocyclo // linear setup: one branch per optional dependency
 func Run(ctx context.Context, exampleDir string, opts Options) error {
@@ -140,8 +152,9 @@ func Run(ctx context.Context, exampleDir string, opts Options) error {
 	return nil
 }
 
-// startOASTReceiver builds, starts, and configures the embedded OAST receiver
-// from opts (advertise host, DNS address, callback host).
+// startOASTReceiver builds, starts, and configures
+// the embedded OAST receiver from opts (advertise
+// host, DNS address, callback host).
 func startOASTReceiver(opts Options) (*oast.Receiver, error) {
 	advertise := opts.OASTAdvertiseHost
 	if advertise == "" {
@@ -161,8 +174,9 @@ func startOASTReceiver(opts Options) (*oast.Receiver, error) {
 	return recv, nil
 }
 
-// loadAuthStore reads an auth-state JSON array into an encrypted in-memory
-// store, mirroring cmd/nocapsec's -authstate loader.
+// loadAuthStore reads an auth-state JSON array into
+// an encrypted in-memory store, mirroring
+// cmd/nocapsec's -authstate loader.
 func loadAuthStore(path string) (authstate.Store, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // example reads its own sibling file
 	if err != nil {

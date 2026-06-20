@@ -1,5 +1,5 @@
-// Package engine is the in-process orchestration core: it runs the verification
-// pipeline, dispatches work to bounded per-capability pools, and tracks jobs.
+// Package engine runs the verification pipeline
+// on bounded pools.
 package engine
 
 import (
@@ -22,10 +22,11 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// ErrNotImplemented signals a Task dispatched with no Run func.
+// ErrNotImplemented means a Task has no Run func.
 var ErrNotImplemented = errors.New("engine: not implemented")
 
-// Limits caps concurrent jobs per capability per target.
+// Limits caps concurrent jobs per capability
+// per target.
 type Limits struct {
 	HTTPReplay int
 	Timing     int
@@ -33,7 +34,7 @@ type Limits struct {
 	OAST       int
 }
 
-// For returns the per-target concurrency limit for capability c.
+// For returns the per-target limit for cap c.
 func (l Limits) For(c Capability) int {
 	switch c {
 	case CapHTTPReplay:
@@ -53,19 +54,19 @@ func DefaultLimits() Limits {
 	return Limits{HTTPReplay: 5, Timing: 1, Browser: 2, OAST: 8}
 }
 
-// Config holds the engine's execution tuning and injected dependencies.
+// Config holds engine tuning and injected deps.
 type Config struct {
 	Limits    Limits
 	Resolver  policy.Resolver
 	Store     artifacts.ArtifactStore
 	AuthStore authstate.Store
-	// Browser runs client-side proof attempts; nil disables browser validators.
+	// Browser runs client-side proofs; nil off.
 	Browser browser.BrowserRunner
-	// OAST allocates/polls out-of-band callbacks; nil disables OAST validators.
+	// OAST handles out-of-band callbacks; nil off.
 	OAST oast.OAST
-	// InternalAssessment opts into otherwise-blocked IP ranges.
+	// InternalAssessment opts into blocked ranges.
 	InternalAssessment bool
-	// Logger receives structured events; nil disables logging.
+	// Logger receives structured events; nil off.
 	Logger Logger
 }
 
@@ -95,7 +96,8 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Engine runs the verification pipeline on bounded pools.
+// Engine runs the verification pipeline on
+// bounded pools.
 type Engine struct {
 	dispatcher         Dispatcher
 	jobs               *jobStore
@@ -111,7 +113,7 @@ type Engine struct {
 	closed             atomic.Bool
 }
 
-// New wires the dispatcher, worker pools, and job store from cfg.
+// New wires dispatcher, pools, job store from cfg.
 func New(cfg Config) (*Engine, error) {
 	cfg = cfg.withDefaults()
 	return &Engine{
@@ -129,10 +131,11 @@ func New(cfg Config) (*Engine, error) {
 	}, nil
 }
 
-// ErrClosed is returned by Verify after Close has been called.
+// ErrClosed is returned by Verify after Close.
 var ErrClosed = errors.New("engine: closed")
 
-// Verify runs the full pipeline for one finding and returns its terminal Report.
+// Verify runs the pipeline for one finding
+// to a terminal Report.
 func (e *Engine) Verify(ctx context.Context, raw []byte) (verdict.Report, error) {
 	if e.closed.Load() {
 		return verdict.Report{}, ErrClosed
@@ -271,8 +274,8 @@ func (e *Engine) planAndDispatch(ctx context.Context, finding *evidence.Finding,
 	return report, nil
 }
 
-// checkAuth loads auth state and verifies it is not expired.
-// Returns a reason code on failure, empty string on success.
+// checkAuth loads auth state; reason code if
+// missing/expired, else "".
 func (e *Engine) checkAuth(ctx context.Context, authStateID string) string {
 	_, err := e.authStore.Get(ctx, authStateID)
 	if err != nil {
@@ -287,7 +290,8 @@ func (e *Engine) checkAuth(ctx context.Context, authStateID string) string {
 	return ""
 }
 
-// evaluate maps the validator's result to a terminal Report.
+// evaluate maps the validator's result
+// to a terminal Report.
 func evaluate(f *evidence.Finding, res validators.Result, err error, now time.Time) verdict.Report {
 	pol := verdict.PolicySummary{
 		SchemeOK:            true,
@@ -318,7 +322,8 @@ func evaluate(f *evidence.Finding, res validators.Result, err error, now time.Ti
 	}
 }
 
-// checkEvidencePolicy runs the policy gate on the finding's request URLs.
+// checkEvidencePolicy: mandatory gate on the
+// finding's request URLs.
 func checkEvidencePolicy(f *evidence.Finding, pe validators.PolicyEnforcer) (string, error) {
 	urls := extractURLs(f)
 	for _, u := range urls {
@@ -333,7 +338,8 @@ func checkEvidencePolicy(f *evidence.Finding, pe validators.PolicyEnforcer) (str
 	return "", nil
 }
 
-// extractURLs gathers all request URLs from the finding for policy checking.
+// extractURLs gathers the finding's request URLs
+// for the gate.
 func extractURLs(f *evidence.Finding) []string {
 	var urls []string
 	if reqs := evidence.ExtractRequests(f); len(reqs) > 0 {
@@ -351,7 +357,7 @@ func extractURLs(f *evidence.Finding) []string {
 	return urls
 }
 
-// generateRandomHex returns 16 hex bytes from crypto/rand.
+// generateRandomHex returns 16 random bytes as hex.
 func generateRandomHex() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -360,12 +366,12 @@ func generateRandomHex() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// Handler returns the HTTP API backed by this Engine.
+// Handler returns the HTTP API for this Engine.
 func (e *Engine) Handler() http.Handler {
 	return newServer(e).handler()
 }
 
-// Close stops accepting new work and drains in-flight tasks.
+// Close stops new work and drains in-flight tasks.
 func (e *Engine) Close() error {
 	e.closed.Store(true)
 	e.logger.Info("engine_close", "status", "draining")

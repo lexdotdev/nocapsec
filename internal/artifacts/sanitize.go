@@ -9,7 +9,7 @@ import (
 
 const redacted = "[REDACTED]"
 
-// sensitiveHeaders lists headers whose values are always redacted.
+// sensitiveHeaders: values always redacted.
 var sensitiveHeaders = map[string]bool{
 	"cookie":              true,
 	"authorization":       true,
@@ -17,16 +17,15 @@ var sensitiveHeaders = map[string]bool{
 	"proxy-authorization": true,
 }
 
-// bearerRe matches bearer-like tokens in arbitrary text.
+// bearerRe matches bearer-like tokens.
 var bearerRe = regexp.MustCompile(`(?i)\b[Bb]earer\s+[A-Za-z0-9\-._~+/]+=*`)
 
-// headerValueRe matches Cookie/Authorization/Set-Cookie/CSRF header values
-// in raw HTTP-like text (e.g. "Cookie: ...").
+// headerValueRe matches auth/cookie header values.
 var headerValueRe = regexp.MustCompile(
 	`(?im)^(Cookie|Set-Cookie|Authorization|Proxy-Authorization)\s*:\s*(.+)$`,
 )
 
-// csrfRe matches CSRF token patterns in form fields and JSON.
+// csrfRe matches CSRF token patterns.
 var csrfRe = regexp.MustCompile(
 	`(?i)(csrf[-_]?token|_csrf|XSRF[-_]TOKEN|X-CSRF[-_]TOKEN)\s*[=:"]\s*[^\s"',;&]+`,
 )
@@ -40,7 +39,7 @@ var jwtRe = regexp.MustCompile(`\beyJ[A-Za-z0-9_-]{6,}\.[A-Za-z0-9_-]{6,}\.[A-Za
 // awsKeyRe matches AWS access key IDs.
 var awsKeyRe = regexp.MustCompile(`\b(?:AKIA|ASIA|AGPA|AIDA|AROA|ANPA|ANVA)[A-Z0-9]{16}\b`)
 
-// Sanitize redacts secrets from raw bytes before persistence.
+// Sanitize redacts secrets before storage.
 func Sanitize(data []byte) []byte {
 	s := string(data)
 	s = headerValueRe.ReplaceAllString(s, "$1: "+redacted)
@@ -52,7 +51,7 @@ func Sanitize(data []byte) []byte {
 	return []byte(s)
 }
 
-// SanitizeHeaders redacts values of sensitive headers in place.
+// SanitizeHeaders redacts sensitive header values.
 func SanitizeHeaders(headers []evidence.Header) []evidence.Header {
 	out := make([]evidence.Header, len(headers))
 	for i, h := range headers {

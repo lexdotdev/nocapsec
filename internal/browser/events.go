@@ -11,7 +11,7 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// eventCollector records CDP events during a browser job.
+// eventCollector records CDP events during a job.
 type eventCollector struct {
 	mu      sync.Mutex
 	navs    []NavEvent
@@ -20,14 +20,14 @@ type eventCollector struct {
 	netEvts []NetEvent
 }
 
-// attach registers CDP event listeners on the chromedp context.
+// attach registers CDP event listeners.
 func (ec *eventCollector) attach(ctx context.Context) {
 	chromedp.ListenTarget(ctx, func(ev any) {
 		switch e := ev.(type) {
 		case *page.EventJavascriptDialogOpening:
 			ec.recordDialog(e)
 			go func() {
-				// Auto-accept so the page cannot block execution.
+				// Auto-accept so the page cannot block.
 				_ = chromedp.Run(ctx, page.HandleJavaScriptDialog(true))
 			}()
 
@@ -90,7 +90,7 @@ func (ec *eventCollector) recordNet(e *network.EventRequestWillBeSent) {
 	})
 }
 
-// snapshot returns copies of all collected events.
+// snapshot returns copies of collected events.
 func (ec *eventCollector) snapshot() ([]NavEvent, []DialogEvent, []ConsoleEvent, []NetEvent) {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
@@ -105,7 +105,7 @@ func (ec *eventCollector) snapshot() ([]NavEvent, []DialogEvent, []ConsoleEvent,
 	return navs, dialogs, console, netEvts
 }
 
-// originFromFrameURL extracts origin from a URL string.
+// originFromFrameURL extracts the origin.
 func originFromFrameURL(raw string) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.Host == "" {

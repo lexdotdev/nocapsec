@@ -1,8 +1,5 @@
-// Package policy is the mandatory security gate for every outbound URL.
-//
-// Comparison is structural (canonical origins, label-anchored host match),
-// never string-based; DNS is resolved and pinned, every redirect re-checked.
-// Imports only the stdlib and x/net/idna.
+// Package policy is the mandatory security gate
+// for every outbound URL.
 package policy
 
 import (
@@ -12,7 +9,7 @@ import (
 	"net/url"
 )
 
-// Phase is where a URL check happens (browser nav consults committed state).
+// Phase is where a URL check happens.
 type Phase int
 
 const (
@@ -39,7 +36,7 @@ const (
 	schemeHTTPS = "https"
 )
 
-// Stable rejection reason codes, surfaced in reports.
+// Stable rejection reason codes, used in reports.
 const (
 	ReasonControlChar     = "control_char"
 	ReasonUnparseable     = "unparseable"
@@ -54,7 +51,8 @@ const (
 	ReasonTooManyRedirect = "too_many_redirects"
 )
 
-// RejectionError reports a policy violation; Reason is a stable Reason* code.
+// RejectionError reports a violation;
+// Reason is a stable code.
 type RejectionError struct {
 	Reason string
 	Raw    string
@@ -74,15 +72,15 @@ func reject(reason, raw string, err error) *RejectionError {
 	return &RejectionError{Reason: reason, Raw: raw, Err: err}
 }
 
-// Origin is a normalized (scheme, host, port) triple; the port is always
-// explicit so equality is total.
+// Origin is a normalized scheme/host/port;
+// port always explicit.
 type Origin struct {
 	Scheme string
 	Host   string
 	Port   int
 }
 
-// Equal reports exact origin equality after normalization.
+// Equal reports origin equality after normalizing.
 func (o Origin) Equal(other Origin) bool {
 	return o.Scheme == other.Scheme && o.Host == other.Host && o.Port == other.Port
 }
@@ -91,7 +89,7 @@ func (o Origin) String() string {
 	return fmt.Sprintf("%s://%s:%d", o.Scheme, o.Host, o.Port)
 }
 
-// URLPolicy bounds what a finding may reach, per target.
+// URLPolicy bounds what a finding may reach.
 type URLPolicy struct {
 	AllowedSchemes      []string
 	AllowedHosts        []string
@@ -109,18 +107,19 @@ type URLPolicy struct {
 	BlockUnspecified   bool
 	BlockCloudMetadata bool
 
-	// InternalAssessment opts into otherwise-blocked ranges.
+	// InternalAssessment opts into blocked ranges.
 	InternalAssessment bool
 }
 
-// SafeURL passed policy; it carries the pinned IPs the dialer may connect to.
+// SafeURL passed policy; carries pinned IPs
+// for the dialer.
 type SafeURL struct {
 	URL      *url.URL
 	Origin   Origin
 	PinnedIP []net.IP
 }
 
-// Resolver maps a host to IPs. Injectable so tests skip the network.
+// Resolver maps a host to IPs; injected in tests.
 type Resolver interface {
 	Resolve(ctx context.Context, host string) ([]net.IP, error)
 }
@@ -130,6 +129,6 @@ type Checker struct {
 	Policy   URLPolicy
 	Resolver Resolver
 
-	// redirects counts hops in the current chain; reset by ResetRedirects.
+	// redirects counts hops in the current chain.
 	redirects int
 }

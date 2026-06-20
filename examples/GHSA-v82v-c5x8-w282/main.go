@@ -16,9 +16,11 @@ func main() {
 		log.Fatal("resolve example path")
 	}
 
-	// Browser: the setup POST stores the payload, then a fresh Chrome context
-	// navigates /note where NiceGUI binds the stored markdown to innerHTML and the
-	// <img onerror> fires automatically -- captured as a javascript_dialog.
+	// Browser: the setup POST stores the payload,
+	// then a fresh Chrome context navigates /note
+	// where NiceGUI binds the stored markdown to
+	// innerHTML and the <img onerror> fires
+	// automatically -- captured as a js dialog.
 	err := exampleutil.Run(context.Background(), filepath.Dir(file), exampleutil.Options{
 		Browser:            true,
 		InternalAssessment: true,

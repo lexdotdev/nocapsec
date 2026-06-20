@@ -6,7 +6,8 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// jobStore holds the current Report for each accepted job, keyed by job ID.
+// jobStore holds the current Report per job,
+// keyed by job ID.
 type jobStore struct {
 	mu   sync.RWMutex
 	jobs map[string]verdict.Report
@@ -23,7 +24,7 @@ func (s *jobStore) put(id string, r verdict.Report) {
 	s.jobs[id] = r
 }
 
-// get returns the Report for id and whether one exists.
+// get returns the Report for id and if it exists.
 func (s *jobStore) get(id string) (verdict.Report, bool) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

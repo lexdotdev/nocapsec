@@ -32,14 +32,14 @@ type interactshInteraction struct {
 	SMTPFrom string `json:"smtp-from,omitempty"`
 }
 
-// normalizeProtocol lowercases a wire protocol name.
+// normalizeProtocol lowercases protocol name.
 func normalizeProtocol(raw string) string {
 	return strings.ToLower(raw)
 }
 
-// extractUserAgent parses the User-Agent header from an interaction.
+// extractUserAgent parses the User-Agent header.
 func extractUserAgent(e interactshInteraction) string {
-	// Interactsh embeds the HTTP request; parse User-Agent header.
+	// Interactsh embeds the HTTP request.
 	raw := e.HTTPRequest
 	if raw == "" {
 		raw = e.RawRequest
@@ -52,7 +52,7 @@ func extractUserAgent(e interactshInteraction) string {
 	return ""
 }
 
-// parseInteractshTime parses a wire timestamp, zero on failure.
+// parseInteractshTime parses a wire timestamp.
 func parseInteractshTime(s string) time.Time {
 	for _, layout := range []string{
 		time.RFC3339Nano,

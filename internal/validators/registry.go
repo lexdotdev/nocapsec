@@ -1,14 +1,14 @@
 package validators
 
-// registry maps a finding type to its validator, populated by init functions.
+// registry maps finding type to validator.
 var registry = map[string]Validator{}
 
-// Register adds v under v.Type(); a duplicate type overwrites the earlier one.
+// Register adds v under v.Type(); dupes overwrite.
 func Register(v Validator) {
 	registry[v.Type()] = v
 }
 
-// Lookup returns the validator registered for type t, and whether one exists.
+// Lookup returns the validator for type t.
 func Lookup(t string) (Validator, bool) {
 	v, ok := registry[t]
 	return v, ok

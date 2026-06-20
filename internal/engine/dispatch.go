@@ -6,23 +6,23 @@ import (
 	"sync"
 )
 
-// Dispatcher routes a Task to the worker pool for its Capability under the
-// per-target concurrency limit.
+// Dispatcher routes a Task to its pool under
+// the per-target limit.
 type Dispatcher interface {
-	// Dispatch runs t on its capability's pool and blocks until it completes.
+	// Dispatch runs t on its pool, blocking until done.
 	Dispatch(ctx context.Context, t Task) error
-	// Close drains the pools and stops accepting work.
+	// Close drains pools and stops accepting work.
 	Close() error
 }
 
-// inProcessDispatcher is the default Dispatcher: one bounded pool per capability
-// plus a per-(capability,target) semaphore limiter.
+// inProcessDispatcher: one pool per capability
+// plus a per-key limiter.
 type inProcessDispatcher struct {
 	pools   map[Capability]*pool
 	limiter *limiter
 }
 
-// newDispatcher starts one pool per capability sized by limits.
+// newDispatcher starts one pool per capability.
 func newDispatcher(limits Limits) *inProcessDispatcher {
 	pools := make(map[Capability]*pool, len(capabilities))
 	for _, c := range capabilities {
@@ -51,8 +51,8 @@ func (d *inProcessDispatcher) Close() error {
 	return nil
 }
 
-// limiter caps concurrent work per (capability, target) with one semaphore per
-// key, sized to the capability's limit. A non-positive limit means unlimited.
+// limiter caps work per (capability,target);
+// 0 is unlimited.
 type limiter struct {
 	limits Limits
 	mu     sync.Mutex
@@ -63,7 +63,7 @@ func newLimiter(limits Limits) *limiter {
 	return &limiter{limits: limits, sems: map[string]chan struct{}{}}
 }
 
-// acquire blocks for a slot on (capability,target) and returns a release func.
+// acquire blocks for a slot, returns release func.
 func (l *limiter) acquire(ctx context.Context, c Capability, target string) (func(), error) {
 	sem := l.semFor(c, target)
 	if sem == nil {
@@ -77,8 +77,8 @@ func (l *limiter) acquire(ctx context.Context, c Capability, target string) (fun
 	}
 }
 
-// semFor returns the semaphore for the key, creating it on first use; nil means
-// the capability is unlimited.
+// semFor returns the key's semaphore;
+// nil means unlimited.
 func (l *limiter) semFor(c Capability, target string) chan struct{} {
 	n := l.limits.For(c)
 	if n < 1 {

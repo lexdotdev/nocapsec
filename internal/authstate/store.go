@@ -1,5 +1,5 @@
-// Package authstate models auth as a first-class encrypted object referenced
-// only by auth_state_id.
+// Package authstate stores credentials
+// AES-256-GCM at rest.
 package authstate
 
 import (
@@ -20,7 +20,7 @@ var (
 	ErrDecrypt  = errors.New("authstate: decryption failed")
 )
 
-// Healthcheck probes that a session is still valid before a verification run.
+// Healthcheck probes that a session is still valid.
 type Healthcheck struct {
 	Method               string `json:"method"`
 	URL                  string `json:"url"`
@@ -28,8 +28,8 @@ type Healthcheck struct {
 	ExpectedBodyContains string `json:"expected_body_contains"`
 }
 
-// AuthState is referenced from a finding only by ID. Raw secrets live in the
-// encrypted blob, never in this struct's serialized form.
+// AuthState is non-secret metadata;
+// secrets in encrypted blob.
 type AuthState struct {
 	ID             string      `json:"id"`
 	Kind           string      `json:"kind"`
@@ -40,13 +40,13 @@ type AuthState struct {
 	Healthcheck    Healthcheck `json:"healthcheck"`
 }
 
-// Credentials holds the secret material stored encrypted at rest.
+// Credentials holds secrets, encrypted at rest.
 type Credentials struct {
 	Cookies []Cookie          `json:"cookies,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
 }
 
-// Cookie is a single cookie entry for injection.
+// Cookie is one cookie entry for injection.
 type Cookie struct {
 	Name   string `json:"name"`
 	Value  string `json:"value"`
@@ -54,24 +54,24 @@ type Cookie struct {
 	Path   string `json:"path"`
 }
 
-// Store looks up auth state and credentials by auth_state_id.
+// Store looks up auth state and credentials by ID.
 type Store interface {
 	Get(ctx context.Context, id string) (*AuthState, error)
 	GetCredentials(ctx context.Context, id string) (*Credentials, error)
 	Put(ctx context.Context, state *AuthState, creds *Credentials) error
 }
 
-// Clock abstracts time for expiry checks.
+// Clock abstracts time for expiry.
 type Clock interface {
 	Now() time.Time
 }
 
-// wallClock is the production clock.
+// wallClock is the real clock.
 type wallClock struct{}
 
 func (wallClock) Now() time.Time { return time.Now() }
 
-// encryptedStore is an in-memory Store with AES-256-GCM at-rest encryption.
+// encryptedStore: in-memory, AES-256-GCM at rest.
 type encryptedStore struct {
 	gcm   cipher.AEAD
 	clock Clock
@@ -81,8 +81,8 @@ type encryptedStore struct {
 	blobs  map[string][]byte     // id -> encrypted credentials
 }
 
-// NewStore returns an encrypted in-memory Store.
-// key must be exactly 32 bytes (AES-256).
+// NewStore returns an encrypted store;
+// key 32 bytes (AES-256).
 func NewStore(key []byte, clock Clock) (Store, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -103,7 +103,7 @@ func NewStore(key []byte, clock Clock) (Store, error) {
 	}, nil
 }
 
-// lookupState returns the state for id under read lock, checking expiry.
+// lookupState returns state for id, checks expiry.
 func (s *encryptedStore) lookupState(id string) (*AuthState, error) {
 	st, ok := s.states[id]
 	if !ok {

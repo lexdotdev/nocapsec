@@ -16,8 +16,10 @@ func main() {
 		log.Fatal("resolve example path")
 	}
 
-	// Pure HTTP: replay the traversal request and a benign control, then compare
-	// the leaked marker. InternalAssessment allows the loopback target.
+	// Pure HTTP: replay the traversal request and a
+	// benign control, then compare the leaked
+	// marker. InternalAssessment allows the loopback
+	// target.
 	err := exampleutil.Run(context.Background(), filepath.Dir(file), exampleutil.Options{
 		InternalAssessment: true,
 		Timeout:            30 * time.Second,

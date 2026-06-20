@@ -40,7 +40,7 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// Inject the per-run nonce so the final URL carries it.
+	// Inject per-run nonce so the final URL carries it.
 	ev.Entrypoint.URL = replaceNonceSlot(ev.Entrypoint.URL, job.Nonce)
 
 	if rejectScheme(ev.Entrypoint.URL) {
@@ -52,7 +52,7 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 		return Result{Verdict: verdict.Rejected}, nil //nolint:nilerr // policy gate
 	}
 
-	// Initial origin must equal target.
+	// Initial origin must be the target.
 	if !safe.Origin.Equal(targetOrigin) {
 		return Result{Verdict: verdict.Rejected}, nil
 	}
@@ -80,7 +80,7 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 	return evaluateRedirect(result, targetOrigin, externalOrigin, job.Nonce, maxHops), nil
 }
 
-// evaluateRedirect applies the 7-point proof rule on browser results.
+// evaluateRedirect applies the proof rule.
 func evaluateRedirect(
 	r browser.BrowserResult,
 	target, external policy.Origin,
@@ -94,12 +94,12 @@ func evaluateRedirect(
 		return Result{Verdict: verdict.NotReproduced}
 	}
 
-	// Final URL scheme must be http(s).
+	// Final scheme must be http(s).
 	if rejectScheme(r.FinalURL) {
 		return Result{Verdict: verdict.Rejected}
 	}
 
-	// Final URL origin must equal the declared external origin.
+	// Final origin must be the declared external one.
 	u, err := url.Parse(r.FinalURL)
 	if err != nil || u.Host == "" {
 		return Result{Verdict: verdict.NotReproduced}
@@ -114,7 +114,7 @@ func evaluateRedirect(
 		return Result{Verdict: verdict.NotReproduced}
 	}
 
-	// Require a committed transition FROM target TO external in the nav chain.
+	// Require a committed target->external transition.
 	if !hasOriginTransition(r.Navigation, target, external, maxHops) &&
 		!hasNetworkOriginTransition(r.Network, target, external, maxHops) {
 		return Result{Verdict: verdict.NotReproduced}
@@ -139,7 +139,7 @@ type redirectProofBlock struct {
 	NoncePresent  bool   `json:"nonce_present"`
 }
 
-// formatNavChain renders nav events as "<origin> <url>".
+// formatNavChain renders navs as "<origin> <url>".
 func formatNavChain(navs []browser.NavEvent) []string {
 	if len(navs) == 0 {
 		return nil
@@ -165,8 +165,7 @@ func startsAtTarget(r browser.BrowserResult, target policy.Origin) bool {
 	return ok && o.Equal(target)
 }
 
-// hasOriginTransition checks that the navigation events contain a transition
-// from the target origin to the external origin within maxHops.
+// hasOriginTransition: target->external in maxHops.
 func hasOriginTransition(navs []browser.NavEvent, target, external policy.Origin, maxHops int) bool {
 	seenTarget := false
 	for i, n := range navs {

@@ -23,19 +23,19 @@ func (pathTraversal) Validate(ctx context.Context, job Job, env Env) (Result, er
 
 	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
 
-	// 1. Replay candidate request.
+	// Replay candidate request.
 	candidateCap, err := httpx.Replay(ctx, bundle, ev.Request)
 	if err != nil {
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
 
-	// 2. Replay negative control.
+	// Replay negative control.
 	controlCap, err := httpx.Replay(ctx, bundle, ev.NegativeControl)
 	if err != nil {
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
 
-	// 3-4. Marker must be present in candidate AND absent from control.
+	// Marker must be in candidate, absent from control.
 	candidateBody := string(candidateCap.RespBody)
 	controlBody := string(controlCap.RespBody)
 

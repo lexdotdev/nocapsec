@@ -12,14 +12,13 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/policy"
 )
 
-// maxResponseBytes caps the captured response body (4 MiB).
+// maxResponseBytes caps the response body (4 MiB).
 const maxResponseBytes = 4 << 20
 
-// Replay executes req verbatim through the bundle's policy-pinned client and
-// captures response bytes, status, redirect trace, and monotonic latency.
-// It runs CheckURL first to pin IPs, resets the redirect chain, then executes.
+// Replay runs req through the policy-pinned
+// client (SSRF defense).
 func Replay(ctx context.Context, b *ClientBundle, req evidence.Request) (*Capture, error) {
-	// Pin IPs for the initial URL.
+	// Pin IPs for the initial URL (SSRF defense).
 	b.Checker.ResetRedirects()
 	safe, err := b.Checker.CheckURL(req.URL, policy.PhaseInitial) //nolint:contextcheck // CheckURL's contract drives its own resolver timeout
 	if err != nil {
@@ -63,7 +62,7 @@ func Replay(ctx context.Context, b *ClientBundle, req evidence.Request) (*Captur
 	}, nil
 }
 
-// buildRequest creates an http.Request from a captured evidence request.
+// buildRequest builds a request from evidence.
 func buildRequest(ctx context.Context, req evidence.Request) (*http.Request, error) {
 	var body io.Reader = http.NoBody
 	if req.Body != "" {

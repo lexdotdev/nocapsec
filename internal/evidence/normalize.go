@@ -7,10 +7,8 @@ import (
 	"strings"
 )
 
-// Canonicalize rewrites a Finding into replay-safe form: every request URL gets a
-// lower-cased scheme/host (trailing dot stripped) and canonical header casing.
-// Request objects are found structurally (any object with method+url), so no
-// per-type metadata is needed. Everything else is preserved.
+// Canonicalize: replay-safe form.
+// Lowers scheme/host, canonicalizes headers.
 func Canonicalize(f *Finding) error {
 	if len(f.Evidence) > 0 {
 		var v any
@@ -38,8 +36,7 @@ func Canonicalize(f *Finding) error {
 	return nil
 }
 
-// canonicalizeValue walks a decoded JSON tree and canonicalizes every
-// request-shaped object in place.
+// canonicalizeValue canon's request-shaped nodes.
 func canonicalizeValue(v any) error {
 	switch t := v.(type) {
 	case map[string]any:
@@ -63,16 +60,14 @@ func canonicalizeValue(v any) error {
 	return nil
 }
 
-// isRequestShape reports whether a decoded object is a request (has string
-// method and url).
+// isRequestShape reports a string method and url.
 func isRequestShape(m map[string]any) bool {
 	_, hasMethod := m["method"].(string)
 	_, hasURL := m["url"].(string)
 	return hasMethod && hasURL
 }
 
-// canonicalizeRequestMap canonicalizes the url and header names of a decoded
-// request object in place.
+// canonicalizeRequestMap canon's url + headers.
 func canonicalizeRequestMap(m map[string]any) error {
 	if raw, ok := m["url"].(string); ok && raw != "" {
 		canon, err := canonicalURL(raw)
@@ -93,8 +88,7 @@ func canonicalizeRequestMap(m map[string]any) error {
 	return nil
 }
 
-// canonicalizeRequest lower-cases the URL scheme/host and header names of a typed
-// request in place.
+// canonicalizeRequest canon's URL + headers.
 func canonicalizeRequest(r *Request) error {
 	if r.URL != "" {
 		canon, err := canonicalURL(r.URL)
@@ -109,8 +103,7 @@ func canonicalizeRequest(r *Request) error {
 	return nil
 }
 
-// canonicalURL lower-cases the scheme and host (stripping a trailing dot),
-// preserving path, query, and port.
+// canonicalURL lowers scheme+host, strips dot.
 func canonicalURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -122,7 +115,7 @@ func canonicalURL(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// rebuildHost reassembles a host[:port] authority, bracketing IPv6 literals.
+// rebuildHost rebuilds host[:port], brackets IPv6.
 func rebuildHost(host, port string) string {
 	if host == "" {
 		return ""
@@ -136,9 +129,8 @@ func rebuildHost(host, port string) string {
 	return host
 }
 
-// ExtractRequests returns every request a finding declares (in evidence,
-// controls, and cleanup) for external use such as policy checking. Requests are
-// found structurally, so the set does not depend on the finding type.
+// ExtractRequests returns all requests:
+// evidence, controls, cleanup.
 func ExtractRequests(f *Finding) []Request {
 	var reqs []Request
 	if len(f.Evidence) > 0 {
@@ -152,7 +144,7 @@ func ExtractRequests(f *Finding) []Request {
 	return reqs
 }
 
-// collectRequests gathers every request-shaped object in a decoded JSON tree.
+// collectRequests gathers request-shaped objects.
 func collectRequests(v any, out *[]Request) {
 	switch t := v.(type) {
 	case map[string]any:

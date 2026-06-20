@@ -10,9 +10,8 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// ephemeralContext creates a chromedp allocator with an ephemeral user-data-dir
-// that is destroyed when cleanup is called. proxyURL routes all browser egress
-// through the policy CONNECT proxy; execPath pins the browser binary.
+// ephemeralContext: throwaway profile,
+// egress via policy proxy.
 func ephemeralContext(parent context.Context, proxyURL, execPath string) (ctx context.Context, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "nocapsec-browser-*")
 	if err != nil {
@@ -53,10 +52,10 @@ func ephemeralContext(parent context.Context, proxyURL, execPath string) (ctx co
 	return taskCtx, cleanup, nil
 }
 
-// chromeEnvVar pins the browser binary without a flag (handy in containers/CI).
+// chromeEnvVar pins the browser binary.
 const chromeEnvVar = "NOCAPSEC_CHROME_PATH"
 
-// chromeCommands are Chrome/Chromium executable names looked up on PATH.
+// chromeCommands are names looked up on PATH.
 var chromeCommands = []string{
 	"google-chrome",
 	"google-chrome-stable",
@@ -65,9 +64,8 @@ var chromeCommands = []string{
 	"chrome",
 }
 
-// resolveExecPath locates the browser binary in precedence order: explicit path,
-// NOCAPSEC_CHROME_PATH, a command on PATH, then a known per-OS install location.
-// Returns "" to defer to chromedp's own detection.
+// resolveExecPath finds the browser;
+// "" defers to chromedp.
 func resolveExecPath(explicit string) string {
 	if explicit != "" {
 		return explicit
@@ -88,8 +86,7 @@ func resolveExecPath(explicit string) string {
 	return ""
 }
 
-// chromeInstallPaths is a HACK: it lists well-known install locations for the host OS, where
-// the browser is commonly absent from PATH (notably macOS app bundles).
+// chromeInstallPaths lists install paths per OS.
 func chromeInstallPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
@@ -129,14 +126,14 @@ func chromeInstallPaths() []string {
 	}
 }
 
-// isExecutableFile reports whether path is a regular file runnable by the OS.
+// isExecutableFile reports if path is runnable.
 func isExecutableFile(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {
 		return false
 	}
 	if runtime.GOOS == "windows" {
-		return true // mode bits are not meaningful on Windows
+		return true // mode bits not meaningful on Windows
 	}
 	return info.Mode()&0o111 != 0
 }

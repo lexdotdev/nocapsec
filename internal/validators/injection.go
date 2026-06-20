@@ -13,7 +13,7 @@ const (
 	kindJSONBody = "json_body"
 )
 
-// InjectionLocation names a single declared slot in a request.
+// InjectionLocation names a declared request slot.
 type InjectionLocation struct {
 	Kind        string `json:"kind"`
 	Name        string `json:"name"`
@@ -32,13 +32,13 @@ func (loc InjectionLocation) valid() bool {
 	}
 }
 
-// injectionEvidence is the engine-owned contrast: one slot, per-arm values.
+// injectionEvidence: one slot with per-arm values.
 type injectionEvidence struct {
 	Location InjectionLocation `json:"location"`
 	Payloads map[string]string `json:"payloads"`
 }
 
-// injectValue plants value into the single declared location of req.
+// injectValue plants value into the declared slot.
 func injectValue(req evidence.Request, loc InjectionLocation, value string) (evidence.Request, error) {
 	switch loc.Kind {
 	case kindQuery:

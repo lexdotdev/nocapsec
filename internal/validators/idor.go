@@ -60,8 +60,7 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// 2. Attacker reads the owner's resource. The placeholder may have been
-	// percent-encoded during URL normalization, so substitute both forms.
+	// 2. Attacker reads the owner's resource.
 	attackReq := ev.AttackRequest
 	resourceID := extractResourceID(setupCap.RespBody)
 	attackReq.URL = replaceResourceIDSlot(attackReq.URL, resourceID)
@@ -74,14 +73,13 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
 
-	// 3. Verified if attacker's response contains the owner's canary.
+	// 3. Verified if attacker response holds canary.
 	if !strings.Contains(string(attackCap.RespBody), marker) {
 		return Result{Verdict: verdict.NotReproduced}, nil
 	}
 
 	if proof.RequireOwnerControl {
-		// Differential: owner-created resource should structurally
-		// resemble what the attacker received.
+		// Differential: owner should resemble attacker.
 		dims := []DiffDimension{DimStatus, DimContentLengthBucket}
 		setupFP := Fingerprint(setupCap)
 		attackFP := Fingerprint(attackCap)
@@ -117,7 +115,7 @@ type idorReadProof struct {
 	RequireOwnerControl bool   `json:"require_owner_control"`
 }
 
-// loadCreds fetches auth state (checking expiry) and returns credentials.
+// loadCreds checks auth-state expiry then creds.
 func loadCreds(ctx context.Context, store authstate.Store, id string) (*authstate.Credentials, error) {
 	if _, err := store.Get(ctx, id); err != nil {
 		return nil, err
@@ -125,16 +123,14 @@ func loadCreds(ctx context.Context, store authstate.Store, id string) (*authstat
 	return store.GetCredentials(ctx, id)
 }
 
-// replaceResourceIDSlot substitutes the created-resource-id placeholder,
-// covering the literal token and the percent-encoded form that URL
-// normalization produces for the braces.
+// replaceResourceIDSlot fills the resource-id slot.
 func replaceResourceIDSlot(s, id string) string {
 	s = strings.ReplaceAll(s, "{{created_resource_id}}", id)
 	s = strings.ReplaceAll(s, "%7B%7Bcreated_resource_id%7D%7D", id)
 	return strings.ReplaceAll(s, "%7b%7bcreated_resource_id%7d%7d", id)
 }
 
-// extractResourceID pulls a resource ID from the setup response body.
+// extractResourceID pulls a resource ID from body.
 func extractResourceID(body []byte) string {
 	var obj map[string]json.RawMessage
 	if json.Unmarshal(body, &obj) == nil {

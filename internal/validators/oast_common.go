@@ -15,7 +15,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// oastEvidence is shared across XXE, command injection, and blind XSS validators.
+// oastEvidence is shared by the OAST validators.
 type oastEvidence struct {
 	Request       evidence.Request  `json:"request"`
 	MutationSlots map[string]string `json:"mutation_slots"`
@@ -26,7 +26,7 @@ type oastProof struct {
 	PollWindowSeconds int    `json:"poll_window_seconds"`
 }
 
-// oastOpts controls differences between OAST validator flavors.
+// oastOpts varies behavior per OAST flavor.
 type oastOpts struct {
 	Purpose            string
 	SlotKey            string
@@ -35,7 +35,7 @@ type oastOpts struct {
 	ExpectedProtocols  []string
 }
 
-// allocateToken creates an OAST token for the given purpose.
+// allocateToken creates an OAST token.
 func allocateToken(ctx context.Context, env Env, purpose string) (*oast.OASTToken, verdict.Verdict) {
 	if env.OAST == nil {
 		return nil, verdict.Inconclusive
@@ -47,7 +47,7 @@ func allocateToken(ctx context.Context, env Env, purpose string) (*oast.OASTToke
 	return tok, ""
 }
 
-// oastPollConfig builds a PollConfig from env overrides.
+// oastPollConfig builds a PollConfig w/ overrides.
 func oastPollConfig(env Env, window, defaultWindow time.Duration) oast.PollConfig {
 	if window <= 0 {
 		window = defaultWindow
@@ -66,7 +66,7 @@ func oastPollConfig(env Env, window, defaultWindow time.Duration) oast.PollConfi
 	}
 }
 
-// parseOASTJob unmarshals and validates evidence common to all OAST validators.
+// parseOASTJob unmarshals, validates OAST evidence.
 func parseOASTJob(job Job, slotKey string) (oastEvidence, oastProof, verdict.Verdict) {
 	var ev oastEvidence
 	if err := json.Unmarshal(job.Finding.Evidence, &ev); err != nil {
@@ -85,7 +85,7 @@ func parseOASTJob(job Job, slotKey string) (oastEvidence, oastProof, verdict.Ver
 	return ev, proof, ""
 }
 
-// oastPollAndEvaluate polls for interactions and optionally applies source attribution.
+// oastPollAndEvaluate polls, may attribute source.
 func oastPollAndEvaluate(
 	ctx context.Context, env Env, job Job,
 	tok *oast.OASTToken, proof oastProof, opts oastOpts,
@@ -129,7 +129,7 @@ func oastPollAndEvaluate(
 	})}
 }
 
-// attributedOASTProof builds the proof for OAST validators with source attribution.
+// attributedOASTProof builds an attributed proof.
 func attributedOASTProof(ix oast.Interaction) oastAttributedProof {
 	return oastAttributedProof{
 		CorrelationID: ix.CorrelationID,
@@ -151,8 +151,7 @@ type blindOASTProof struct {
 	Protocol      string `json:"protocol"`
 }
 
-// runOASTValidator is the common flow for XXE, command-injection, and blind-XSS
-// OAST validators: parse, policy-check, allocate token, inject, replay, poll.
+// runOASTValidator runs the full OAST pipeline.
 func runOASTValidator(ctx context.Context, job Job, env Env, opts oastOpts) (Result, error) {
 	ev, proof, bad := parseOASTJob(job, opts.SlotKey)
 	if bad != "" {
@@ -182,7 +181,7 @@ func runOASTValidator(ctx context.Context, job Job, env Env, opts oastOpts) (Res
 	return oastPollAndEvaluate(ctx, env, job, tok, proof, opts), nil
 }
 
-// injectSlot writes the OAST URL into the declared mutation slot.
+// injectSlot writes the OAST URL to declared slot.
 func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OASTToken) (evidence.Request, error) {
 	oastValue := tok.URLHTTPS
 	if slotKey == "oast_host" {
@@ -198,12 +197,12 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 		return out, nil
 	}
 
-	// "body.<field>" or a plain field name: a form-encoded body field.
+	// "body.<field>" or plain name: form body field.
 	field := strings.TrimPrefix(slotTarget, "body.")
 	return injectValue(req, InjectionLocation{Kind: kindForm, Name: field}, oastValue)
 }
 
-// injectFormField replaces or inserts a field in a URL-encoded form body.
+// injectFormField sets a field in URL-encoded body.
 func injectFormField(body, field, value string) (string, error) {
 	if body == "" {
 		return url.Values{field: {value}}.Encode(), nil
@@ -216,7 +215,7 @@ func injectFormField(body, field, value string) (string, error) {
 	return vals.Encode(), nil
 }
 
-// replaceXMLEntityURL replaces the first http(s):// URL in XML with oastURL.
+// replaceXMLEntityURL swaps first XML http(s) URL.
 func replaceXMLEntityURL(body, oastURL string) string {
 	for _, prefix := range []string{"https://", "http://"} {
 		idx := strings.Index(body, prefix)

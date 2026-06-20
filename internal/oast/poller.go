@@ -25,19 +25,18 @@ type PollConfig struct {
 	Multiplier  float64       // backoff growth factor
 }
 
-// PollResult is what the poller returns to the caller.
+// PollResult is what the poller returns.
 type PollResult struct {
 	Interactions []Interaction
 	Expired      bool // true if window closed with no match
 }
 
-// PollUntilMatch drives the polling loop for one token, returning as soon
-// as at least one interaction arrives or the window expires.
+// PollUntilMatch polls until hit or window expiry.
 func PollUntilMatch(ctx context.Context, backend OAST, tokenID string, since time.Time, cfg PollConfig, clock Clock) (*PollResult, error) {
 	deadline := since.Add(cfg.Window)
 	interval := cfg.MinInterval
 
-	// Initial wait before first poll.
+	// Wait before first poll.
 	if err := sleepCtx(ctx, cfg.InitialWait); err != nil {
 		return nil, err
 	}

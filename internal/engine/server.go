@@ -14,7 +14,7 @@ import (
 // maxBodyBytes caps request body reads (1 MiB).
 const maxBodyBytes = 1 << 20
 
-// server adapts an Engine to the verifier HTTP API.
+// server adapts an Engine to the HTTP API.
 type server struct {
 	engine *Engine
 }
@@ -32,7 +32,7 @@ func (s *server) handler() http.Handler {
 	return mux
 }
 
-// postVerify accepts evidence, validates synchronously, and dispatches the job.
+// postVerify validates evidence, then dispatches.
 func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
@@ -40,7 +40,7 @@ func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Quick schema/normalizer check — invalid findings get 422 synchronously.
+	// Invalid findings get 422 synchronously.
 	_, parseErr := evidence.Parse(body)
 	if parseErr != nil {
 		reason := "parse_error"
@@ -55,18 +55,15 @@ func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate job ID.
 	jobID, err := generateRandomHex()
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "id_gen"})
 		return
 	}
 
-	// Store initial running state.
 	s.engine.jobs.put(jobID, verdict.NewReport("", "", "running"))
 
-	// Run pipeline in background; use background ctx since the HTTP request
-	// completes before the pipeline finishes (202 async pattern).
+	// Background: 202 returns before pipeline finishes.
 	go func(raw []byte) { //nolint:contextcheck // async pipeline outlives the HTTP request
 		report, _ := s.engine.Verify(context.Background(), raw)
 		s.engine.jobs.put(jobID, report)
@@ -78,7 +75,8 @@ func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getVerify returns the current Report for a job, or 404 if unknown.
+// getVerify returns the current Report for a job,
+// or 404 if unknown.
 func (s *server) getVerify(w http.ResponseWriter, r *http.Request) {
 	report, ok := s.engine.jobs.get(r.PathValue("id"))
 	if !ok {
@@ -88,7 +86,7 @@ func (s *server) getVerify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, report)
 }
 
-// getArtifacts returns artifact references for a job.
+// getArtifacts returns artifact refs for a job.
 func (s *server) getArtifacts(w http.ResponseWriter, req *http.Request) {
 	report, ok := s.engine.jobs.get(req.PathValue("id"))
 	if !ok {

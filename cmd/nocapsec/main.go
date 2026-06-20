@@ -1,5 +1,4 @@
-// Command nocapsec is the single binary for the nocapsec proof engine: a CLI
-// that serves the HTTP API and runs a one-shot verification.
+// Command nocapsec is the proof engine CLI.
 package main
 
 import (
@@ -51,8 +50,7 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  doc [type]       print the evidence/proof schema for a finding type (e.g. ssrf)")
 }
 
-// doc prints the schema documentation for a finding type, or lists types when
-// no argument is given.
+// doc prints a type's schema, or lists types.
 func doc(args []string) {
 	if len(args) == 0 {
 		fmt.Print(evidence.DocList())
@@ -66,7 +64,7 @@ func doc(args []string) {
 	fmt.Println(out)
 }
 
-// wiring holds the injected-dependency flags shared by serve and verify.
+// wiring holds dep flags for serve and verify.
 type wiring struct {
 	oast              bool
 	oastHTTPAddr      string
@@ -78,7 +76,8 @@ type wiring struct {
 	chromePath        string
 }
 
-// loadConfig builds a Config from file < env < flags, plus dependency wiring.
+// loadConfig builds Config + wiring.
+// Precedence: file < env < flags.
 func loadConfig(fs *flag.FlagSet, args []string) (config.Config, wiring) {
 	var (
 		cfgFile     string
@@ -109,7 +108,7 @@ func loadConfig(fs *flag.FlagSet, args []string) (config.Config, wiring) {
 	fs.StringVar(&w.chromePath, "chrome-path", "", "browser binary path (default: auto-detect; or set NOCAPSEC_CHROME_PATH)")
 	_ = fs.Parse(args)
 
-	// Detect whether -internal was explicitly set.
+	// Was -internal explicitly set?
 	fs.Visit(func(f *flag.Flag) {
 		if f.Name == "internal" {
 			hasInternal = true
@@ -126,9 +125,8 @@ func loadConfig(fs *flag.FlagSet, args []string) (config.Config, wiring) {
 	return cfg, w
 }
 
-// newEngine builds a nocapsec.Engine from config + wiring, with optional logger.
-// When the embedded OAST receiver is enabled it is started here and returned so
-// the caller can stop its listeners on shutdown; otherwise the receiver is nil.
+// newEngine builds an Engine; returns the OAST
+// receiver to stop (nil if off).
 func newEngine(cfg config.Config, w wiring, logger engine.Logger) (*nocapsec.Engine, *oast.Receiver, error) {
 	store := artifacts.NewStore()
 
@@ -182,7 +180,8 @@ func newEngine(cfg config.Config, w wiring, logger engine.Logger) (*nocapsec.Eng
 	return eng, recv, nil
 }
 
-// loadAuthStore reads an auth-state JSON file into an encrypted in-memory store.
+// loadAuthStore reads auth-state JSON
+// into an encrypted store.
 func loadAuthStore(path string) (authstate.Store, error) {
 	data, err := os.ReadFile(path) //nolint:gosec // operator-supplied path
 	if err != nil {
@@ -196,7 +195,7 @@ func loadAuthStore(path string) (authstate.Store, error) {
 		return nil, err
 	}
 
-	key := make([]byte, 32) // per-process key: states are written and read here
+	key := make([]byte, 32) // per-process key
 	if _, err := rand.Read(key); err != nil {
 		return nil, err
 	}
@@ -221,7 +220,7 @@ func loadAuthStore(path string) (authstate.Store, error) {
 	return store, nil
 }
 
-// serve runs the HTTP API backed by an in-process engine.
+// serve runs the HTTP API on an in-process engine.
 func serve(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	cfg, w := loadConfig(fs, args)
@@ -268,7 +267,7 @@ func serve(args []string) {
 	}
 }
 
-// verify runs the full pipeline for one finding in-process, then exits.
+// verify runs the pipeline for one finding.
 func verify(args []string) {
 	fs := flag.NewFlagSet("verify", flag.ExitOnError)
 	cfg, w := loadConfig(fs, args)

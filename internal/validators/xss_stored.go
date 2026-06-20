@@ -36,21 +36,21 @@ func (xssStored) Validate(ctx context.Context, job Job, env Env) (Result, error)
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// Inject the per-run nonce so the stored payload carries it.
+	// Inject per-run nonce into the stored payload.
 	for i := range ev.Setup {
 		ev.Setup[i].URL = replaceNonceSlot(ev.Setup[i].URL, job.Nonce)
 		ev.Setup[i].Body = replaceNonceSlot(ev.Setup[i].Body, job.Nonce)
 	}
 
-	// Run cleanup on all exit paths.
+	// Cleanup on all exit paths.
 	defer runCleanup(ctx, env, ev.Cleanup)
 
-	// Phase 1: store the payload via setup requests.
+	// Phase 1: store the payload via setup.
 	if res, err := runSetup(ctx, env, ev.Setup); res.Verdict != "" {
 		return res, err
 	}
 
-	// Phase 2: trigger in a fresh browser context.
+	// Phase 2: trigger in a fresh browser.
 	triggerURL := ev.Trigger.URL
 	if rejectScheme(triggerURL) {
 		return Result{Verdict: verdict.Rejected}, nil
@@ -102,8 +102,7 @@ type xssStoredEvidence struct {
 	Cleanup       []evidence.Request `json:"cleanup,omitempty"`
 }
 
-// runSetup replays setup requests. Returns a non-empty verdict on failure,
-// the zero Result on success.
+// runSetup replays setup; non-empty verdict = fail.
 func runSetup(ctx context.Context, env Env, reqs []evidence.Request) (Result, error) {
 	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
 	for i, req := range reqs {
@@ -121,7 +120,8 @@ func runSetup(ctx context.Context, env Env, reqs []evidence.Request) (Result, er
 	return Result{}, nil
 }
 
-// runCleanup replays cleanup requests; failures never change the verdict.
+// runCleanup replays cleanup; failures don't
+// change the verdict.
 func runCleanup(ctx context.Context, env Env, reqs []evidence.Request) {
 	if len(reqs) == 0 {
 		return

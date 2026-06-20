@@ -10,9 +10,8 @@ import (
 	"golang.org/x/net/idna"
 )
 
-// idnaProfile canonicalizes non-ASCII hosts like idna.Lookup, but disables the
-// STD3 rule so underscores are tolerated consistently (e.g. srv_münchen). Label
-// validation still runs, so malformed labels are still rejected.
+// idnaProfile canonicalizes non-ASCII hosts;
+// STD3 off (underscores), labels still validated.
 var idnaProfile = idna.New(
 	idna.MapForLookup(),
 	idna.BidiRule(),
@@ -20,17 +19,17 @@ var idnaProfile = idna.New(
 	idna.StrictDomainName(false),
 )
 
-// NewChecker constructs a Checker for a policy and resolver.
+// NewChecker constructs a Checker.
 func NewChecker(p URLPolicy, r Resolver) *Checker {
 	return &Checker{Policy: p, Resolver: r}
 }
 
-// CheckURL runs the canonicalize + scope + DNS/IP pipeline and returns a SafeURL
-// with the pinned IPs on success, else a *RejectionError with a stable reason.
-// Order is fixed: cheap structural rejections run before any DNS resolution.
+// CheckURL: canonicalize + scope + DNS/IP ->
+// SafeURL with pinned IPs;
+// structural rejections before DNS.
 func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:gocyclo // ordered security pipeline kept linear for auditability
-	// 1. Trim, then reject any control/non-printable rune before it reaches
-	// net/url's lenient parser (tabs, newlines, NUL, embedded controls).
+	// 1. Reject control runes before
+	// net/url's lenient parser.
 	trimmed := strings.TrimSpace(raw)
 	if trimmed == "" {
 		return nil, reject(ReasonUnparseable, raw, nil)
@@ -39,13 +38,14 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 		return nil, reject(ReasonControlChar, raw, nil)
 	}
 
-	// 2. Parse with net/url. Require an absolute URL with a host.
+	// 2. Parse; require an absolute URL with a host.
 	u, err := url.Parse(trimmed)
 	if err != nil {
 		return nil, reject(ReasonUnparseable, raw, err)
 	}
 	if !u.IsAbs() {
-		// Catches protocol-relative ("//evil.com") and scheme-less inputs.
+		// Catches protocol-relative ("//evil.com")
+		// and scheme-less.
 		return nil, reject(ReasonBadScheme, raw, nil)
 	}
 
@@ -59,7 +59,7 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 		return nil, reject(ReasonBadScheme, raw, nil)
 	}
 
-	// 4. Reject userinfo (the URLPolicy shape never permits it).
+	// 4. Reject userinfo; never permitted.
 	if u.User != nil {
 		return nil, reject(ReasonUserinfo, raw, nil)
 	}
@@ -74,7 +74,7 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 	if host == "" {
 		return nil, reject(ReasonEmptyHost, raw, nil)
 	}
-	// IDNA: convert unicode/confusable hosts to ASCII; pure-ASCII is left as-is.
+	// IDNA: convert unicode/confusable hosts to ASCII.
 	if !isASCII(host) {
 		ascii, err := idnaProfile.ToASCII(host)
 		if err != nil {
@@ -83,18 +83,18 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 		host = strings.ToLower(ascii)
 	}
 
-	// Re-attach the normalized host (keeping any explicit port) so SafeURL.URL
-	// is canonical.
+	// Re-attach normalized host (with port) so
+	// SafeURL.URL is canonical.
 	if p := u.Port(); p != "" {
 		u.Host = host + ":" + p
 	} else {
 		u.Host = host
 	}
 
-	// 6. IP-literal host: classify directly, skip DNS. ParseHostIP normalizes
-	// alternate encodings (decimal/octal/hex/short-form/mapped) to a canonical IP.
+	// 6. IP-literal host: normalize alt encodings,
+	// classify, skip DNS.
 	if ip, isIP := ParseHostIP(host); isIP {
-		canon := ip.String() // standard form so dialer and comparisons agree
+		canon := ip.String() // standard form for dialer/comparisons
 		if p := u.Port(); p != "" {
 			if ip.To4() == nil {
 				u.Host = "[" + canon + "]:" + p
@@ -115,8 +115,8 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 		if !ok {
 			return nil, reject(ReasonBadPort, raw, nil)
 		}
-		// An IP literal still satisfies host/port scope when the policy declares
-		// allowed hosts; no host scope means range blocking only.
+		// IP literals honor host/port scope;
+		// no host scope = range block only.
 		if !c.portAllowed(origin.Port) {
 			return nil, reject(ReasonBadPort, raw, nil)
 		}
@@ -126,7 +126,7 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 		return &SafeURL{URL: u, Origin: origin, PinnedIP: []net.IP{ip}}, nil
 	}
 
-	// 7. Build Origin and check host + port scope.
+	// 7. Build Origin; check host + port scope.
 	origin, ok := OriginFromURL(u)
 	if !ok {
 		return nil, reject(ReasonBadPort, raw, nil)
@@ -140,9 +140,8 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 		return nil, reject(ReasonBadPort, raw, nil)
 	}
 
-	// 8. Resolve and classify every IP; reject any in a blocked range (DNS
-	// rebinding resistance). CheckURL has no ctx in its contract, so the
-	// resolver drives its own timeout.
+	// 8. Resolve + classify every IP; reject blocked
+	// range (DNS rebinding resistance).
 	if c.Resolver == nil {
 		return nil, reject(ReasonUnresolvable, raw, nil)
 	}
@@ -164,7 +163,7 @@ func (c *Checker) CheckURL(raw string, _ Phase) (*SafeURL, error) { //nolint:goc
 	return &SafeURL{URL: u, Origin: origin, PinnedIP: pinned}, nil
 }
 
-// schemeAllowed reports whether scheme is permitted; empty list means any.
+// schemeAllowed reports scheme allowed; empty=any.
 func (c *Checker) schemeAllowed(scheme string) bool {
 	if len(c.Policy.AllowedSchemes) == 0 {
 		return true
@@ -177,14 +176,13 @@ func (c *Checker) schemeAllowed(scheme string) bool {
 	return false
 }
 
-// hasHostScope reports whether the policy declares any host allowance; none
-// means host scope is not enforced.
+// hasHostScope reports if any host allowance set.
 func (c *Checker) hasHostScope() bool {
 	return len(c.Policy.AllowedHosts) > 0 || len(c.Policy.AllowedHostSuffixes) > 0
 }
 
-// hostAllowed does structural, label-anchored matching (never substring/prefix).
-// host must already be normalized (lower-case, no trailing dot, IDNA-ASCII).
+// hostAllowed: label-anchored match
+// (never substring); host normalized.
 func (c *Checker) hostAllowed(host string) bool {
 	for _, h := range c.Policy.AllowedHosts {
 		if strings.EqualFold(strings.TrimSuffix(h, "."), host) {
@@ -199,9 +197,8 @@ func (c *Checker) hostAllowed(host string) bool {
 	return false
 }
 
-// matchHostSuffix reports whether host is at or below suffix at a label
-// boundary: ".example.com" matches "app.example.com" and the apex, but not
-// "notexample.com" or "x.example.com.attacker.net".
+// matchHostSuffix matches on a label boundary,
+// not "notexample.com".
 func matchHostSuffix(host, suffix string) bool {
 	host = strings.ToLower(strings.TrimSuffix(host, "."))
 	suffix = strings.ToLower(strings.TrimSuffix(suffix, "."))
@@ -217,7 +214,7 @@ func matchHostSuffix(host, suffix string) bool {
 	return strings.HasSuffix(host, suffix)
 }
 
-// portAllowed reports whether port is permitted; empty list means any.
+// portAllowed reports if port allowed; empty = any.
 func (c *Checker) portAllowed(port int) bool {
 	if len(c.Policy.AllowedPorts) == 0 {
 		return true
@@ -225,7 +222,7 @@ func (c *Checker) portAllowed(port int) bool {
 	return slices.Contains(c.Policy.AllowedPorts, port)
 }
 
-// isControlOrNonPrint reports whether r is a C0/C1 control rune.
+// isControlOrNonPrint reports a C0/C1 control rune.
 func isControlOrNonPrint(r rune) bool {
 	if r < 0x20 || r == 0x7f {
 		return true
@@ -236,7 +233,7 @@ func isControlOrNonPrint(r rune) bool {
 	return false
 }
 
-// isASCII reports whether s contains only ASCII bytes.
+// isASCII reports if s is all ASCII bytes.
 func isASCII(s string) bool {
 	for i := 0; i < len(s); i++ {
 		if s[i] >= 0x80 {

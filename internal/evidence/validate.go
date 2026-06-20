@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Stable reason codes for an invalid finding, surfaced in a report's reason.
+// Stable reason codes for an invalid finding.
 const (
 	ReasonEmptyBody         = "empty_body"
 	ReasonMalformedJSON     = "malformed_json"
@@ -20,9 +20,8 @@ const (
 	ReasonDanglingSlot      = "dangling_mutation_slot"
 )
 
-// InvalidError says why a finding is invalid; it unwraps to ErrInvalid and
-// Reason is the stable report code. For schema violations the wrapped cause
-// carries the failing JSON path from the schema validator.
+// InvalidError unwraps to ErrInvalid.
+// Reason is the report code, cause the JSON path.
 type InvalidError struct {
 	Reason string
 	Field  string
@@ -46,11 +45,10 @@ func invalid(reason, field string, cause error) *InvalidError {
 	return &InvalidError{Reason: reason, Field: field, cause: cause}
 }
 
-// Parse turns untrusted client JSON into a canonical, validated Finding: reject
-// empty/malformed input and unknown types, validate the whole finding against
-// its per-type JSON Schema, reject inlined credentials, canonicalize, and verify
-// every mutation slot resolves. Failure yields a wrapped ErrInvalid with a
-// stable reason and no execution.
+// Parse: untrusted JSON -> validated Finding.
+// Schema, reject inlined credentials,
+// canonicalize, check slots.
+// Fail-closed: no execution.
 func Parse(raw []byte) (*Finding, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, invalid(ReasonEmptyBody, "", nil)
@@ -73,8 +71,8 @@ func Parse(raw []byte) (*Finding, error) {
 		return nil, invalid(ReasonUnknownType, "type", nil)
 	}
 
-	// Reject inlined credential headers before schema validation: a credential
-	// in a request is a security violation, not a mere shape error.
+	// Reject inlined credentials first:
+	// security, not shape.
 	if name, found := findInlinedCredential(instance); found {
 		return nil, invalid(ReasonInlinedCredential, name, nil)
 	}
@@ -96,9 +94,8 @@ func Parse(raw []byte) (*Finding, error) {
 	return &f, nil
 }
 
-// findInlinedCredential walks a decoded finding for any request header named
-// cookie/authorization/proxy-authorization, which must come from an auth_state_id
-// reference rather than be inlined. Returns the offending header name.
+// findInlinedCredential finds cookie/auth headers.
+// They must reference auth_state_id, not inline it.
 func findInlinedCredential(v any) (string, bool) {
 	switch t := v.(type) {
 	case map[string]any:
@@ -130,8 +127,7 @@ func findInlinedCredential(v any) (string, bool) {
 	return "", false
 }
 
-// validateMutationSlots verifies every slot points at a real position in the
-// finding's requests; a dangling slot makes the finding invalid.
+// validateMutationSlots rejects unreal positions.
 func validateMutationSlots(f *Finding) error {
 	if len(f.Mutation) == 0 {
 		return nil
@@ -145,7 +141,7 @@ func validateMutationSlots(f *Finding) error {
 	return nil
 }
 
-// slotResolves reports whether loc names a real position in some request.
+// slotResolves reports if loc is a real position.
 func slotResolves(loc string, reqs []Request) bool {
 	switch {
 	case loc == "":
@@ -187,7 +183,7 @@ func slotResolves(loc string, reqs []Request) bool {
 	}
 }
 
-// anyContains matches a bare token (or its {{token}} form) in a URL or body.
+// anyContains matches token/{{token}} in URL/body.
 func anyContains(reqs []Request, token string) bool {
 	braced := "{{" + token + "}}"
 	for _, r := range reqs {
@@ -199,7 +195,7 @@ func anyContains(reqs []Request, token string) bool {
 	return false
 }
 
-// anyPointer reports whether a JSON pointer resolves in any request body.
+// anyPointer reports if a pointer resolves in body.
 func anyPointer(reqs []Request, pointer string) bool {
 	for _, r := range reqs {
 		if r.Body == "" {
@@ -216,7 +212,8 @@ func anyPointer(reqs []Request, pointer string) bool {
 	return false
 }
 
-// pointerResolves walks an RFC 6901 JSON pointer through a decoded body.
+// pointerResolves walks an RFC 6901 JSON pointer
+// through a body.
 func pointerResolves(doc any, pointer string) bool {
 	if pointer == "/" {
 		return true

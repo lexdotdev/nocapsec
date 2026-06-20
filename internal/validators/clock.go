@@ -2,7 +2,7 @@ package validators
 
 import "time"
 
-// WallClock is a Clock backed by time.Now (monotonic).
+// WallClock is a Clock backed by time.Now.
 type WallClock struct{}
 
 func (WallClock) Now() time.Time                  { return time.Now() }

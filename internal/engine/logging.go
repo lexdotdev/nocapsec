@@ -19,7 +19,7 @@ type nopLogger struct{}
 func (nopLogger) Info(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
 
-// SlogLogger wraps *slog.Logger into the engine Logger interface.
+// SlogLogger adapts *slog.Logger to engine Logger.
 type SlogLogger struct{ L *slog.Logger }
 
 func (s SlogLogger) Info(msg string, args ...any)  { s.L.Info(msg, args...) }
@@ -40,7 +40,7 @@ func (m *Metrics) RecordVerdict(v verdict.Verdict) {
 	c.Add(1)
 }
 
-// RecordPool increments the job counter for capability c.
+// RecordPool increments the job counter for cap c.
 func (m *Metrics) RecordPool(c Capability) {
 	ctr := m.poolCounter(c)
 	ctr.Add(1)
@@ -52,7 +52,7 @@ func (m *Metrics) VerdictCount(v verdict.Verdict) int64 {
 	return c.Load()
 }
 
-// PoolCount returns the job count for a capability pool.
+// PoolCount returns the job count for a cap pool.
 func (m *Metrics) PoolCount(c Capability) int64 {
 	ctr := m.poolCounter(c)
 	return ctr.Load()
@@ -60,11 +60,7 @@ func (m *Metrics) PoolCount(c Capability) int64 {
 
 func getOrCreateCounter(store *sync.Map, key any) *atomic.Int64 {
 	val, _ := store.LoadOrStore(key, &atomic.Int64{})
-	ctr, ok := val.(*atomic.Int64)
-	if !ok {
-		ctr = &atomic.Int64{}
-		store.Store(key, ctr)
-	}
+	ctr, _ := val.(*atomic.Int64)
 	return ctr
 }
 

@@ -5,19 +5,17 @@ import (
 	"net"
 )
 
-// systemResolver is the production Resolver, wrapping net.Resolver and
-// returning the union of A/AAAA answers. The Go resolver follows CNAMEs
-// transparently; explicit CNAME-chain inspection lands with the httpx dialer.
+// systemResolver wraps net.Resolver; A/AAAA only.
 type systemResolver struct {
 	r *net.Resolver
 }
 
-// NewSystemResolver returns the production Resolver. Tests inject a fake.
+// NewSystemResolver returns the prod Resolver.
 func NewSystemResolver() Resolver {
 	return &systemResolver{r: net.DefaultResolver}
 }
 
-// Resolve looks up the host's IPs as canonical net.IP values.
+// Resolve looks up the host's IPs.
 func (s *systemResolver) Resolve(ctx context.Context, host string) ([]net.IP, error) {
 	addrs, err := s.r.LookupIPAddr(ctx, host)
 	if err != nil {

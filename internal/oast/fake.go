@@ -7,14 +7,15 @@ import (
 	"time"
 )
 
-// Fake is an in-process OAST backend for tests. No network required.
+// Fake is an in-process OAST backend for tests.
+// No network.
 type Fake struct {
 	clock  Clock
 	domain string
 
 	mu           sync.Mutex
 	tokens       map[string]*OASTToken
-	interactions map[string][]Interaction // keyed by correlationID
+	interactions map[string][]Interaction // by correlationID
 	nextID       int
 	closed       map[string]bool
 }
@@ -85,7 +86,7 @@ func (f *Fake) Close(_ context.Context, tokenID string) error {
 	return nil
 }
 
-// AddInteraction injects a callback for test assertions.
+// AddInteraction injects a callback for tests.
 func (f *Fake) AddInteraction(tokenID string, ix Interaction) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

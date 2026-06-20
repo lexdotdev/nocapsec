@@ -16,9 +16,11 @@ func main() {
 		log.Fatal("resolve example path")
 	}
 
-	// OAST: the engine starts an embedded receiver, rewrites the placeholder
-	// SYSTEM URL in the MathML DOCTYPE to its own callback, posts it to the
-	// import endpoint, and waits for the parser's out-of-band fetch.
+	// OAST: the engine starts an embedded receiver,
+	// rewrites the placeholder SYSTEM URL in the
+	// MathML DOCTYPE to its own callback, posts it
+	// to the import endpoint, and waits for the
+	// parser's out-of-band fetch.
 	err := exampleutil.Run(context.Background(), filepath.Dir(file), exampleutil.Options{
 		OAST:               true,
 		InternalAssessment: true,

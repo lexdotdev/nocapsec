@@ -8,12 +8,11 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/policy"
 )
 
-// ErrOriginNotAllowed is returned when injection targets a non-allowed origin.
+// ErrOriginNotAllowed means the origin is blocked.
 var ErrOriginNotAllowed = errors.New("authstate: origin not allowed")
 
-// InjectHeaders returns a copy of the credentials' headers suitable for the
-// given origin. Returns ErrOriginNotAllowed if the origin is not in the
-// state's AllowedOrigins.
+// InjectHeaders copies headers,
+// only for an allowed origin.
 func InjectHeaders(state *AuthState, creds *Credentials, targetOrigin string) (map[string]string, error) {
 	if !originAllowed(state, targetOrigin) {
 		return nil, ErrOriginNotAllowed
@@ -25,9 +24,8 @@ func InjectHeaders(state *AuthState, creds *Credentials, targetOrigin string) (m
 	return out, nil
 }
 
-// InjectCookieJar adds the credential cookies into jar, but only for origins
-// that are in AllowedOrigins. Returns ErrOriginNotAllowed if targetOrigin is
-// not in the state's list.
+// InjectCookieJar adds cookies,
+// only for an allowed origin.
 func InjectCookieJar(state *AuthState, creds *Credentials, jar http.CookieJar, targetOrigin string) error {
 	if !originAllowed(state, targetOrigin) {
 		return ErrOriginNotAllowed
@@ -49,7 +47,7 @@ func InjectCookieJar(state *AuthState, creds *Credentials, jar http.CookieJar, t
 	return nil
 }
 
-// originAllowed checks if origin is in AllowedOrigins.
+// originAllowed reports if origin is allowed.
 func originAllowed(state *AuthState, targetOrigin string) bool {
 	target, ok := policy.ParseOrigin(targetOrigin)
 	if !ok {
