@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
 
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
@@ -23,6 +24,8 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/oast"
 	"github.com/lexdotdev/nocapsec/pkg/nocapsec"
 )
+
+var version = "dev"
 
 func main() {
 	if len(os.Args) < 2 {
@@ -37,6 +40,8 @@ func main() {
 		verify(os.Args[2:])
 	case "doc", "-doc", "--doc":
 		doc(os.Args[2:])
+	case "version", "-version", "--version", "-v", "-V":
+		printVersion()
 	default:
 		usage()
 		os.Exit(2)
@@ -44,10 +49,38 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: nocapsec <serve|verify|doc>")
+	fmt.Fprintln(os.Stderr, "usage: nocapsec <serve|verify|doc|version>")
 	fmt.Fprintln(os.Stderr, "  serve            run the HTTP API + in-process worker pools")
 	fmt.Fprintln(os.Stderr, "  verify <file>    one-shot: verify a single finding and print the report")
 	fmt.Fprintln(os.Stderr, "  doc [type]       print the evidence/proof schema for a finding type (e.g. ssrf)")
+	fmt.Fprintln(os.Stderr, "  version          print version and build info")
+}
+
+// printVersion reports the release tag plus the commit, build time, and
+// dirty-tree flag Go stamps into the binary from VCS metadata.
+func printVersion() {
+	commit, built, modified := "unknown", "unknown", false
+	if info, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range info.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				commit = s.Value
+			case "vcs.time":
+				built = s.Value
+			case "vcs.modified":
+				modified = s.Value == "true"
+			}
+		}
+		fmt.Printf("nocapsec %s\n", version)
+		fmt.Printf("  go:      %s\n", info.GoVersion)
+	} else {
+		fmt.Printf("nocapsec %s\n", version)
+	}
+	if modified {
+		commit += "-dirty"
+	}
+	fmt.Printf("  commit:  %s\n", commit)
+	fmt.Printf("  built:   %s\n", built)
 }
 
 // doc prints a type's schema, or lists types.

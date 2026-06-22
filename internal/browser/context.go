@@ -10,6 +10,9 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
+// osWindows is runtime.GOOS on Windows.
+const osWindows = "windows"
+
 // ephemeralContext: throwaway profile,
 // egress via policy proxy.
 func ephemeralContext(parent context.Context, proxyURL, execPath string) (ctx context.Context, cleanup func(), err error) {
@@ -103,7 +106,7 @@ func chromeInstallPaths() []string {
 			)
 		}
 		return paths
-	case "windows":
+	case osWindows:
 		var paths []string
 		for _, env := range []string{"ProgramFiles", "ProgramFiles(x86)", "LocalAppData"} {
 			if dir := os.Getenv(env); dir != "" {
@@ -132,7 +135,7 @@ func isExecutableFile(path string) bool {
 	if err != nil || info.IsDir() {
 		return false
 	}
-	if runtime.GOOS == "windows" {
+	if runtime.GOOS == osWindows {
 		return true // mode bits not meaningful on Windows
 	}
 	return info.Mode()&0o111 != 0

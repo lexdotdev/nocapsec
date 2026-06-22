@@ -155,7 +155,7 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - asta-svc
+        - github.com/lexdotdev/nocapsec
     gofmt:
       simplify: true
 

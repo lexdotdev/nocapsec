@@ -1,0 +1,48 @@
+# GoReleaser config. Run `goreleaser check` to validate, `goreleaser release
+# --clean` (driven by .github/workflows/release.yml) to publish on a tag.
+# https://goreleaser.com
+version: 2
+
+before:
+  hooks:
+    - go mod download
+
+builds:
+  - id: nocapsec
+    main: ./cmd/nocapsec
+    binary: nocapsec
+    env:
+      - CGO_ENABLED=0          # pure-Go deps; static binaries, clean cross-compile
+    flags:
+      - -trimpath
+    ldflags:
+      # Commit/time still come from Go's VCS stamping; this sets the release tag.
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - id: default
+    formats:
+      - tar.gz
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+
+release:
+  draft: false
+  prerelease: auto

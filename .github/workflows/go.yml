@@ -1,0 +1,56 @@
+# Build and test the Go project on pushes and PRs to main.
+# https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
+name: Go
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Pinned to the version run locally so CI and dev see identical lints.
+      # golangci-lint-action v8 is required for the v2 config schema (.golangci.yml).
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: v2.11.4
+
+  build:
+    needs: lint # don't build/test until linting passes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build
+        run: go build -v ./...
+
+      # Suite is CI-safe: browser tests self-skip when chromium is absent, and
+      # OAST/proxy/engine tests use in-process servers (no network egress).
+      - name: Test
+        run: go test -v ./...
+
+      # Confirm the version stamping works end to end (--always falls back to a
+      # commit hash when no tag is reachable, so this never fails on untagged refs).
+      - name: Version sanity check
+        run: |
+          go build -ldflags "-X main.version=$(git describe --tags --always --dirty)" -o nocapsec ./cmd/nocapsec
+          ./nocapsec version
