@@ -76,6 +76,22 @@ func replaceNonceSlot(s, nonce string) string {
 	return strings.ReplaceAll(s, "%7b%7bnonce%7d%7d", nonce)
 }
 
+// replaceMarkerSlot plants the engine's computed SQL
+// expression (e.g. "73331*91237") at every
+// {{sqli_marker}} slot, before URL/body encoding.
+func replaceMarkerSlot(s, expr string) string {
+	s = strings.ReplaceAll(s, "{{sqli_marker}}", expr)
+	s = strings.ReplaceAll(s, "%7B%7Bsqli_marker%7D%7D", expr)
+	return strings.ReplaceAll(s, "%7b%7bsqli_marker%7d%7d", expr)
+}
+
+// hasMarkerSlot reports whether s carries the slot.
+func hasMarkerSlot(s string) bool {
+	return strings.Contains(s, "{{sqli_marker}}") ||
+		strings.Contains(s, "%7B%7Bsqli_marker%7D%7D") ||
+		strings.Contains(s, "%7b%7bsqli_marker%7d%7d")
+}
+
 // Validator verifies a single finding type.
 type Validator interface {
 	Type() string

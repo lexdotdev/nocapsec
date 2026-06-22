@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sqli.inband",
+  "description": "In-band (UNION) SQLi proven by the database computing a value the engine never transmitted and returning it in the response body, while a benign control does not.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "The engine builds the inband and control arms by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "The inband payload MUST contain the {{sqli_marker}} slot. Per run the engine substitutes it with a fresh arithmetic expression A*B (e.g. 73331*91237) and then requires the integer product to appear in the inband response body and to be absent from the control response. Reflection cannot fake this: the request carries the operands, never the product.",
+    "Author the inband payload as the smallest working UNION (or sub-select) that places {{sqli_marker}} in an in-band column; column count/positions come from your confirmed PoC. kind=query|form needs name; json_body needs json_pointer. For query the param must already be in base_request's URL.",
+    "Proof of the in-band READ CHANNEL only: it establishes that attacker SQL output reaches the response (arbitrary read is reachable), not that any specific table/column was exfiltrated. Record concrete data extraction (credentials, card data) as a PoC-level claim / blindspot."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "sqli.inband" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "inband"],
+              "properties": {
+                "inband": { "type": "string", "pattern": "\\{\\{sqli_marker\\}\\}" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_marker_in_inband", "expected_marker_absent_in_control", "repetitions"],
+      "properties": {
+        "expected_marker_in_inband": { "type": "boolean" },
+        "expected_marker_absent_in_control": { "type": "boolean" },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "sqli-inband-id",
+      "type": "sqli.inband",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": { "method": "GET", "url": "https://app.example.com/products/search?q=1" },
+        "injection": {
+          "location": { "kind": "query", "name": "q" },
+          "payloads": {
+            "control": "nomatch_zzz",
+            "inband": "nomatch_zzz' UNION SELECT {{sqli_marker}},2,3,4,5,6,7-- -"
+          }
+        }
+      },
+      "proof": {
+        "expected_marker_in_inband": true,
+        "expected_marker_absent_in_control": true,
+        "repetitions": 3
+      }
+    }
+  ]
+}
