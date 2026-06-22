@@ -8,7 +8,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/validators"
 )
 
-// Capability aliases validators.Capability.
+// Capability aliases validators.
 type Capability = validators.Capability
 
 const (
@@ -18,32 +18,31 @@ const (
 	CapOAST       = validators.CapOAST
 )
 
-// capabilities lists every pool the engine starts.
+// capabilities lists pool kinds.
 var capabilities = []Capability{CapHTTPReplay, CapTiming, CapBrowser, CapOAST}
 
-// Task is one unit of capability work for a pool.
+// Task is one pool job.
 type Task struct {
 	Capability Capability
 	Target     string
 	Run        func(ctx context.Context) error
 }
 
-// poolItem carries a Task plus its result channel.
+// poolItem carries task result state.
 type poolItem struct {
 	ctx  context.Context
 	task Task
 	done chan<- error
 }
 
-// pool is a bounded worker set fed by a channel;
-// one per Capability.
+// pool is one bounded worker set.
 type pool struct {
 	items chan poolItem
 	wg    sync.WaitGroup
 	stop  sync.Once
 }
 
-// newPool starts worker goroutines draining queue.
+// newPool starts workers.
 func newPool(workers int) *pool {
 	if workers < 1 {
 		workers = 1
@@ -63,9 +62,9 @@ func (p *pool) work() {
 	}
 }
 
-// submit enqueues t, blocks until done or canceled.
+// submit waits for completion or cancel.
 func (p *pool) submit(ctx context.Context, t Task) error {
-	done := make(chan error, 1) // buffered so the worker never blocks reporting
+	done := make(chan error, 1) // worker must never block
 	select {
 	case p.items <- poolItem{ctx: ctx, task: t, done: done}:
 	case <-ctx.Done():
@@ -79,14 +78,13 @@ func (p *pool) submit(ctx context.Context, t Task) error {
 	}
 }
 
-// close stops work and drains in-flight tasks.
+// close drains workers.
 func (p *pool) close() {
 	p.stop.Do(func() { close(p.items) })
 	p.wg.Wait()
 }
 
-// runTask recovers panics so one job can't
-// crash the pool.
+// runTask protects the pool.
 func runTask(ctx context.Context, t Task) (err error) {
 	defer func() {
 		if r := recover(); r != nil {

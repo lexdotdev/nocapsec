@@ -74,6 +74,61 @@ func TestReceiverHTTPCallback(t *testing.T) {
 	}
 }
 
+// Redirector only records followed /cb/.
+func TestReceiverRedirector(t *testing.T) {
+	r := newReceiver(t)
+	tok, err := r.NewInteraction(context.Background(), "ssrf")
+	if err != nil {
+		t.Fatalf("NewInteraction: %v", err)
+	}
+	if tok.URLRedirect == "" {
+		t.Fatal("URLRedirect is empty")
+	}
+
+	since := time.Now()
+
+	// Inspect the 302 directly.
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Get(tok.URLRedirect) //nolint:noctx // test
+	if err != nil {
+		t.Fatalf("GET redirector: %v", err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("status = %d, want 302", resp.StatusCode)
+	}
+	loc := resp.Header.Get("Location")
+	if !strings.Contains(loc, "/cb/"+tok.CorrelationID) {
+		t.Fatalf("Location = %q, want /cb/%s", loc, tok.CorrelationID)
+	}
+
+	// /r/ does not record proof.
+	ixns, err := r.Poll(context.Background(), tok.CorrelationID, since)
+	if err != nil {
+		t.Fatalf("Poll: %v", err)
+	}
+	if len(ixns) != 0 {
+		t.Fatalf("got %d interactions from /r/ hop, want 0", len(ixns))
+	}
+
+	// /cb/ records proof.
+	resp2, err := http.Get(loc) //nolint:noctx // test
+	if err != nil {
+		t.Fatalf("GET callback: %v", err)
+	}
+	_ = resp2.Body.Close()
+
+	ixns, err = r.Poll(context.Background(), tok.CorrelationID, since)
+	if err != nil {
+		t.Fatalf("Poll after /cb/: %v", err)
+	}
+	if len(ixns) != 1 {
+		t.Fatalf("got %d interactions after /cb/ hit, want 1", len(ixns))
+	}
+}
+
 func TestReceiverDNSCallback(t *testing.T) {
 	r := newReceiver(t)
 	tok, err := r.NewInteraction(context.Background(), "command_injection")
@@ -91,7 +146,7 @@ func TestReceiverDNSCallback(t *testing.T) {
 	if _, err := conn.Write(dnsQuery(tok.Domain)); err != nil {
 		t.Fatalf("write query: %v", err)
 	}
-	// Read the A-record reply to confirm the responder answers.
+	// Confirm DNS responder answers.
 	reply := make([]byte, 512)
 	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
 	if _, err := conn.Read(reply); err != nil {
@@ -120,7 +175,7 @@ func TestReceiverPollFiltersBySince(t *testing.T) {
 	}
 	_ = resp.Body.Close()
 
-	// since in the far future: the recorded callback must be filtered out.
+	// Future since filters the callback.
 	ixns, err := r.Poll(context.Background(), tok.CorrelationID, time.Now().Add(time.Hour))
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
@@ -130,7 +185,7 @@ func TestReceiverPollFiltersBySince(t *testing.T) {
 	}
 }
 
-// pollUntil retries Poll briefly so the async DNS handler can record.
+// pollUntil waits for async DNS record.
 func pollUntil(r *oast.Receiver, id string, since time.Time) ([]oast.Interaction, error) {
 	deadline := time.Now().Add(2 * time.Second)
 	for {
@@ -142,7 +197,7 @@ func pollUntil(r *oast.Receiver, id string, since time.Time) ([]oast.Interaction
 	}
 }
 
-// dnsQuery builds a minimal A-record query for name.
+// dnsQuery builds an A query.
 func dnsQuery(name string) []byte {
 	q := []byte{0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}
 	for _, label := range strings.Split(name, ".") {

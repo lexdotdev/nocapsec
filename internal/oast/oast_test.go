@@ -129,7 +129,7 @@ func TestFakePollFiltersBySince(t *testing.T) {
 		Timestamp: clk.Now(),
 	})
 
-	// Poll since lateTS should skip the first interaction.
+	// lateTS skips the first interaction.
 	ixns, err := f.Poll(context.Background(), tok.CorrelationID, lateTS)
 	if err != nil {
 		t.Fatalf("Poll: %v", err)
@@ -210,6 +210,13 @@ func TestClassifySource(t *testing.T) {
 			want:       oast.SourceVerifierBrowser,
 		},
 		{
+			name:       "verifier UA wins over target IP",
+			ix:         oast.Interaction{SourceIP: "10.0.0.5", UserAgent: "HeadlessChrome/125"},
+			targetIPs:  []string{"10.0.0.5"},
+			verifierUA: "HeadlessChrome",
+			want:       oast.SourceVerifierBrowser,
+		},
+		{
 			name:       "noise",
 			ix:         oast.Interaction{SourceIP: "198.51.100.1", UserAgent: "Shodan"},
 			targetIPs:  []string{"10.0.0.5"},
@@ -249,6 +256,7 @@ func TestRequireSourceNotVerifier(t *testing.T) {
 	ixns := []oast.Interaction{
 		{SourceIP: "10.0.0.5", UserAgent: "Python/3.11"},       // target
 		{SourceIP: "203.0.113.1", UserAgent: "HeadlessChrome"}, // verifier
+		{SourceIP: "10.0.0.5", UserAgent: "HeadlessChrome"},    // verifier
 		{SourceIP: "198.51.100.1", UserAgent: "Shodan"},        // noise
 	}
 	got := oast.RequireSourceNotVerifier(ixns, []string{"10.0.0.5"}, "HeadlessChrome")
@@ -345,10 +353,8 @@ func TestPollUntilMatchCancellation(t *testing.T) {
 	}
 }
 
-// --- Interactsh client tests (against fake HTTP server) ---
-
 func TestInteractshClientLifecycle(t *testing.T) {
-	// Build a fake interactsh-server that handles register/poll/deregister.
+	// Fake Interactsh handles lifecycle.
 	var (
 		mu            sync.Mutex
 		registeredIDs []string
@@ -598,7 +604,7 @@ func encryptPayload(t *testing.T, key, plaintext []byte) string {
 		t.Fatalf("rand iv: %v", err)
 	}
 	ciphertext := make([]byte, len(plaintext))
-	stream := cipher.NewCFBEncrypter(block, iv) //nolint:staticcheck // matching Interactsh wire format
+	stream := cipher.NewCFBEncrypter(block, iv) //nolint:staticcheck // Interactsh CFB
 	stream.XORKeyStream(ciphertext, plaintext)
 
 	combined := make([]byte, 0, len(iv)+len(ciphertext))

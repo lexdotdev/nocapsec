@@ -3,6 +3,7 @@ package validators
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"strings"
 
 	"github.com/lexdotdev/nocapsec/internal/evidence"
@@ -15,66 +16,105 @@ type pathTraversal struct{}
 func (pathTraversal) Type() string    { return "path_traversal.file_read" }
 func (pathTraversal) Cap() Capability { return CapHTTPReplay }
 
+// Validate proves file read contrast.
 func (pathTraversal) Validate(ctx context.Context, job Job, env Env) (Result, error) {
-	var ev pathTraversalEvidence
-	if err := json.Unmarshal(job.Finding.Evidence, &ev); err != nil {
-		return Result{Verdict: verdict.Invalid}, nil //nolint:nilerr // schema mismatch -> invalid verdict, not an operational error
+	arms, marker, reps, ok := preparePathTraversal(job)
+	if !ok {
+		return Result{Verdict: verdict.Invalid}, nil
 	}
 
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 
-	// Replay candidate request.
-	candidateCap, err := httpx.Replay(ctx, bundle, ev.Request)
-	if err != nil {
-		return Result{Verdict: verdict.Inconclusive}, err
+	// traversal leaks marker; control does not.
+	redirects, v, err := stableContrast(ctx, bundle, arms.candidate, arms.control, marker, reps)
+	if v != "" {
+		return Result{Verdict: v}, err
 	}
 
-	// Replay negative control.
-	controlCap, err := httpx.Replay(ctx, bundle, ev.NegativeControl)
-	if err != nil {
-		return Result{Verdict: verdict.Inconclusive}, err
-	}
-
-	// Marker must be in candidate, absent from control.
-	candidateBody := string(candidateCap.RespBody)
-	controlBody := string(controlCap.RespBody)
-
-	for _, marker := range ev.ExpectedMarkers {
-		inCandidate := strings.Contains(candidateBody, marker)
-		inControl := strings.Contains(controlBody, marker)
-
-		if inCandidate && !inControl {
-			proof := proofJSON(pathTraversalProof{
-				MatchedMarker:      marker,
-				PresentInCandidate: true,
-				AbsentInControl:    true,
-				CandidateStatus:    candidateCap.StatusCode,
-				ControlStatus:      controlCap.StatusCode,
-			})
-			return Result{
-				Verdict:   verdict.Verified,
-				Proof:     proof,
-				Redirects: formatRedirects(candidateCap.Redirects),
-			}, nil
-		}
-	}
-
-	return Result{Verdict: verdict.NotReproduced}, nil
+	return Result{
+		Verdict: verdict.Verified,
+		Proof: proofJSON(pathTraversalProofBlock{
+			MatchedMarker:         marker,
+			Repetitions:           reps,
+			MarkerInCandidate:     true,
+			MarkerAbsentInControl: true,
+		}),
+		Redirects: redirects,
+	}, nil
 }
 
-type pathTraversalProof struct {
-	MatchedMarker      string `json:"matched_marker"`
-	PresentInCandidate bool   `json:"present_in_candidate"`
-	AbsentInControl    bool   `json:"absent_in_control"`
-	CandidateStatus    int    `json:"candidate_status"`
-	ControlStatus      int    `json:"control_status"`
+// pathTraversalArms: the two request arms.
+type pathTraversalArms struct {
+	candidate evidence.Request
+	control   evidence.Request
+}
+
+// preparePathTraversal builds arms.
+func preparePathTraversal(job Job) (arms pathTraversalArms, marker string, reps int, ok bool) {
+	var ev pathTraversalEvidence
+	if err := json.Unmarshal(job.Finding.Evidence, &ev); err != nil {
+		return arms, "", 0, false
+	}
+	var proof pathTraversalProof
+	if err := json.Unmarshal(job.Finding.Proof, &proof); err != nil {
+		return arms, "", 0, false
+	}
+
+	candidate, okC := ev.Injection.Payloads["candidate"]
+	control, okCtl := ev.Injection.Payloads["control"]
+	if ev.BaseRequest.Method == "" || ev.BaseRequest.URL == "" ||
+		!ev.Injection.Location.valid() || !okC || !okCtl || proof.ExpectedMarker == "" {
+		return arms, "", 0, false
+	}
+
+	candReq, err1 := injectValue(ev.BaseRequest, ev.Injection.Location, candidate)
+	ctlReq, err2 := injectValue(ev.BaseRequest, ev.Injection.Location, control)
+	if err1 != nil || err2 != nil {
+		return arms, "", 0, false
+	}
+	// Marker must not be reflected.
+	if markerReflectable(candidate, proof.ExpectedMarker) ||
+		markerReflectable(control, proof.ExpectedMarker) {
+		return arms, "", 0, false
+	}
+
+	reps = proof.Repetitions
+	if reps < 1 {
+		reps = 2
+	}
+	return pathTraversalArms{candidate: candReq, control: ctlReq}, proof.ExpectedMarker, reps, true
+}
+
+// markerReflectable detects reflection.
+func markerReflectable(payload, marker string) bool {
+	for range 5 {
+		if strings.Contains(payload, marker) {
+			return true
+		}
+		dec, err := url.QueryUnescape(payload)
+		if err != nil || dec == payload {
+			break
+		}
+		payload = dec
+	}
+	return false
 }
 
 type pathTraversalEvidence struct {
-	Request         evidence.Request `json:"request"`
-	VulnerableParam string           `json:"vulnerable_parameter"`
-	ExpectedMarkers []string         `json:"expected_markers"`
-	NegativeControl evidence.Request `json:"negative_control"`
+	BaseRequest evidence.Request  `json:"base_request"`
+	Injection   injectionEvidence `json:"injection"`
+}
+
+type pathTraversalProof struct {
+	ExpectedMarker string `json:"expected_marker"`
+	Repetitions    int    `json:"repetitions"`
+}
+
+type pathTraversalProofBlock struct {
+	MatchedMarker         string `json:"matched_marker"`
+	Repetitions           int    `json:"repetitions"`
+	MarkerInCandidate     bool   `json:"marker_in_candidate"`
+	MarkerAbsentInControl bool   `json:"marker_absent_in_control"`
 }
 
 func init() { Register(pathTraversal{}) }

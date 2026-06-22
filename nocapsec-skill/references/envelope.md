@@ -72,8 +72,8 @@ finding — they live in the auth-state file (see [runtime.md](runtime.md)).
 
 ## The request object
 
-Wherever a field expects a request (`entrypoint`, `request`, `setup_resource`,
-`negative_control`, `requests.control`, cleanup steps, ...) it has this shape:
+Wherever a field expects a request (`entrypoint`, `request`, `base_request`,
+`setup_resource`, `attack_request`, cleanup steps, ...) it has this shape:
 
 ```json
 {
@@ -105,6 +105,11 @@ The engine substitutes only a small, declared set of values; it changes nothing 
 - **`{{created_resource_id}}` (built-in, IDOR only).** In `idor.read`, the engine creates a
   resource as the owner, extracts its id, and substitutes `{{created_resource_id}}` in the
   attacker's `attack_request` URL. See `nocapsec doc idor.read`.
+- **`{{sqli_marker}}` (built-in, `sqli.inband` only).** Place this slot inside the `inband`
+  payload's in-band column (e.g. `UNION SELECT {{sqli_marker}},...`). Per run the engine
+  substitutes it with a fresh arithmetic expression `A*B` and requires the integer product
+  to appear in the in-band response and be absent from the control — the operands are sent,
+  the product never is, so reflection cannot fake it. See `nocapsec doc sqli.inband`.
 - **OAST slots (inside `evidence`).** For `xss.blind`, `xxe.oast`, and
   `command_injection.oast`, the evidence carries its own `mutation_slots` object mapping a
   fixed slot key to the position the OAST value is written into. The engine allocates a

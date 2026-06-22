@@ -7,14 +7,12 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/validators"
 )
 
-// enforcer is a PolicyEnforcer backed by
-// a policy.Checker.
+// enforcer wraps a policy.Checker.
 type enforcer struct {
 	checker *policy.Checker
 }
 
-// NewEnforcer builds a PolicyEnforcer from
-// policy and resolver.
+// NewEnforcer builds a PolicyEnforcer.
 func NewEnforcer(p policy.URLPolicy, r policy.Resolver) validators.PolicyEnforcer {
 	return &enforcer{checker: policy.NewChecker(p, r)}
 }
@@ -27,10 +25,16 @@ func (e *enforcer) CheckRedirect(from, to string) error {
 	return e.checker.CheckRedirect(from, to)
 }
 
-// BrowserProxyFor starts a local CONNECT proxy
-// enforcing policy.
-func (e *enforcer) BrowserProxyFor(_ validators.Job) (string, func(), error) {
-	proxy, err := policy.NewConnectProxy(e.checker)
+// BrowserProxyFor starts a policy proxy.
+func (e *enforcer) BrowserProxyFor(job validators.Job) (string, func(), error) {
+	checker := e.checker
+	if len(job.BrowserAllowedOrigins) > 0 {
+		p := checker.Policy
+		p.AllowExternalFinal = true
+		p.ExternalFinalOrigins = append(append([]policy.Origin{}, p.ExternalFinalOrigins...), job.BrowserAllowedOrigins...)
+		checker = policy.NewChecker(p, checker.Resolver)
+	}
+	proxy, err := policy.NewConnectProxy(checker)
 	if err != nil {
 		return "", nil, err
 	}
@@ -43,8 +47,7 @@ func (e *enforcer) BrowserProxyFor(_ validators.Job) (string, func(), error) {
 
 func (e *enforcer) Checker() *policy.Checker { return e.checker }
 
-// EnforcerFromTarget builds a PolicyEnforcer
-// from target scope.
+// EnforcerFromTarget builds target policy.
 func EnforcerFromTarget(t targetPolicy, r policy.Resolver) validators.PolicyEnforcer {
 	p := policy.URLPolicy{
 		AllowedSchemes:     t.AllowedSchemes,
@@ -64,8 +67,7 @@ func EnforcerFromTarget(t targetPolicy, r policy.Resolver) validators.PolicyEnfo
 	return NewEnforcer(p, r)
 }
 
-// targetPolicy is the evidence.Target subset
-// the enforcer reads.
+// targetPolicy is the needed target subset.
 type targetPolicy struct {
 	AllowedSchemes     []string
 	AllowedHosts       []string

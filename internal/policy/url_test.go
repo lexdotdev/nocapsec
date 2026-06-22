@@ -7,9 +7,7 @@ import (
 	"testing"
 )
 
-// fakeResolver returns a fixed IP set regardless of host, so positive-path tests
-// never touch the network. The default IP is a public address (example.com's
-// historical A record), which must NOT be blocked by ClassifyIP.
+// fakeResolver avoids live DNS.
 type fakeResolver struct {
 	ips []net.IP
 	err error
@@ -22,13 +20,12 @@ func (f fakeResolver) Resolve(_ context.Context, _ string) ([]net.IP, error) {
 	return f.ips, nil
 }
 
-// publicResolver resolves everything to a known public IP.
+// publicResolver returns a public IP.
 func publicResolver() Resolver {
 	return fakeResolver{ips: []net.IP{net.ParseIP("93.184.216.34")}}
 }
 
-// scopePolicy is the canonical scope used by the canonicalizer tests:
-// https only, host app.example.com, port 443.
+// scopePolicy is the canonical URL scope.
 func scopePolicy() URLPolicy {
 	return URLPolicy{
 		AllowedSchemes:   []string{"http", "https"},
@@ -42,8 +39,7 @@ func scopePolicy() URLPolicy {
 	}
 }
 
-// ipPolicy allows http/https and any host, but relies on ClassifyIP to block
-// internal ranges. Used by the IP-literal cases.
+// ipPolicy lets IP classification decide.
 func ipPolicy() URLPolicy {
 	return URLPolicy{
 		AllowedSchemes:     []string{"http", "https"},
@@ -57,8 +53,7 @@ func ipPolicy() URLPolicy {
 	}
 }
 
-// assertReject checks that err is a *RejectionError and, when wantReason is
-// non-empty, that the reason matches.
+// assertReject checks rejection reason.
 func assertReject(t *testing.T, err error, wantReason string) {
 	t.Helper()
 	if err == nil {
@@ -72,8 +67,6 @@ func assertReject(t *testing.T, err error, wantReason string) {
 		t.Fatalf("reason = %q, want %q (err: %v)", re.Reason, wantReason, err)
 	}
 }
-
-// --- Nasty-URL regression contract (canonicalizer scope) ---------------------
 
 func TestCheckURL_NastyScope(t *testing.T) {
 	c := NewChecker(scopePolicy(), publicResolver())
@@ -90,7 +83,7 @@ func TestCheckURL_NastyScope(t *testing.T) {
 		{"query is not host", "https://evil.com/?next=https://example.com", ReasonOutOfScopeHost},
 		{"protocol relative", "//evil.com/path", ReasonBadScheme},
 		{"trailing dot out of scope", "https://example.com./", ReasonOutOfScopeHost},
-		// fullwidth U+FF45 'ｅ' -> idna -> example.com (out of scope vs app.example.com)
+		// Fullwidth e maps to example.com.
 		{"fullwidth confusable", "https://ｅxample.com/", ReasonOutOfScopeHost},
 	}
 
@@ -102,9 +95,7 @@ func TestCheckURL_NastyScope(t *testing.T) {
 	}
 }
 
-// Verify the fullwidth host actually normalizes to example.com (and would be
-// allowed if example.com were in scope), proving the rejection is by scope and
-// not by an IDNA error.
+// Fullwidth e normalizes before scope check.
 func TestCheckURL_FullwidthNormalizesToExampleCom(t *testing.T) {
 	p := scopePolicy()
 	p.AllowedHosts = []string{"example.com"}
@@ -118,8 +109,6 @@ func TestCheckURL_FullwidthNormalizesToExampleCom(t *testing.T) {
 		t.Fatalf("normalized host = %q, want %q", su.Origin.Host, "example.com")
 	}
 }
-
-// --- IP-literal blocking (skip DNS) ------------------------------------------
 
 func TestCheckURL_IPLiteralBlocked(t *testing.T) {
 	c := NewChecker(ipPolicy(), publicResolver())
@@ -138,15 +127,13 @@ func TestCheckURL_IPLiteralBlocked(t *testing.T) {
 		{"link local", "http://169.254.1.1/"},
 		{"hex loopback", "http://0x7f.0.0.1/"},
 		{"ipv6 loopback", "http://[::1]/"},
-		// IPv4-compatible IPv6 of 127.0.0.1 (::a.b.c.d). net.ParseIP yields ::7f00:1
-		// whose To4() is nil, so it must be decoded via the embedded v4 and blocked
-		// as loopback — not accepted as an unclassified v6 (SSRF-to-loopback bypass).
+		// IPv4-compatible IPv6 must decode.
 		{"ipv4-compatible ipv6 loopback", "http://[::127.0.0.1]/"},
 		{"ipv4-compatible ipv6 loopback hex", "http://[::7f00:1]/"},
 		{"ipv4-compatible ipv6 loopback long", "http://[0:0:0:0:0:0:127.0.0.1]/"},
-		// IPv4-compatible IPv6 of 169.254.169.254 (cloud metadata / link-local).
+		// IPv4-compatible metadata IP.
 		{"ipv4-compatible ipv6 metadata", "http://[::a9fe:a9fe]/"},
-		// NAT64 well-known prefix (64:ff9b::/96) of 169.254.169.254.
+		// NAT64 metadata IP.
 		{"nat64 metadata", "http://[64:ff9b::a9fe:a9fe]/"},
 	}
 
@@ -158,7 +145,7 @@ func TestCheckURL_IPLiteralBlocked(t *testing.T) {
 	}
 }
 
-// Internal assessment opt-in lets an otherwise-blocked IP through.
+// Internal assessment permits blocked ranges.
 func TestCheckURL_InternalAssessmentAllowsBlocked(t *testing.T) {
 	p := ipPolicy()
 	p.InternalAssessment = true
@@ -172,8 +159,6 @@ func TestCheckURL_InternalAssessmentAllowsBlocked(t *testing.T) {
 		t.Fatalf("pinned IP = %v, want [127.0.0.1]", su.PinnedIP)
 	}
 }
-
-// --- Origin equality decision table ------------------------------------------
 
 func TestOrigin_Equality(t *testing.T) {
 	mustOrigin := func(raw string) Origin {
@@ -206,8 +191,6 @@ func TestOrigin_Equality(t *testing.T) {
 	}
 }
 
-// --- Host-matching decision table --------------------------------------------
-
 func TestHostMatching_DecisionTable(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -234,8 +217,7 @@ func TestHostMatching_DecisionTable(t *testing.T) {
 	}
 }
 
-// Drive the suffix path through CheckURL end-to-end, including the adversarial
-// "label boundary" reject.
+// Suffix scope stays label-bound.
 func TestCheckURL_SuffixScope(t *testing.T) {
 	p := scopePolicy()
 	p.AllowedHosts = nil
@@ -248,8 +230,6 @@ func TestCheckURL_SuffixScope(t *testing.T) {
 	_, err := c.CheckURL("https://x.example.com.attacker.net/", PhaseInitial)
 	assertReject(t, err, ReasonOutOfScopeHost)
 }
-
-// --- Positive path -----------------------------------------------------------
 
 func TestCheckURL_PositivePinsIP(t *testing.T) {
 	c := NewChecker(scopePolicy(), publicResolver())
@@ -270,8 +250,7 @@ func TestCheckURL_PositivePinsIP(t *testing.T) {
 	}
 }
 
-// A host that passes scope but resolves to a blocked IP is rejected (DNS
-// rebinding / private-IP drift resistance).
+// DNS rebinding to private IP is blocked.
 func TestCheckURL_ResolvedToBlockedIP(t *testing.T) {
 	c := NewChecker(scopePolicy(), fakeResolver{ips: []net.IP{net.ParseIP("10.0.0.5")}})
 
@@ -286,8 +265,6 @@ func TestCheckURL_Unresolvable(t *testing.T) {
 	assertReject(t, err, ReasonUnresolvable)
 }
 
-// --- Redirect re-check -------------------------------------------------------
-
 func TestCheckRedirect(t *testing.T) {
 	p := scopePolicy()
 	p.AllowRedirects = true
@@ -296,21 +273,19 @@ func TestCheckRedirect(t *testing.T) {
 	if err := c.CheckRedirect("https://app.example.com/a", "https://app.example.com/b"); err != nil {
 		t.Fatalf("in-scope redirect should pass, got %v", err)
 	}
-	// Redirect to an out-of-scope host is rejected by re-running the full policy.
+	// Full policy runs on redirects.
 	assertReject(t, c.CheckRedirect("https://app.example.com/a", "https://evil.com/"), ReasonOutOfScopeHost)
-	// Redirect to a blocked IP literal is rejected.
+	// Blocked IP redirects fail.
 	assertReject(t, c.CheckRedirect("https://app.example.com/a", "http://127.0.0.1/"), ReasonBlockedIP)
 
-	// When redirects are disallowed, even an in-scope hop is rejected.
+	// Redirects must be enabled.
 	p2 := scopePolicy()
 	p2.AllowRedirects = false
 	c2 := NewChecker(p2, publicResolver())
 	assertReject(t, c2.CheckRedirect("https://app.example.com/a", "https://app.example.com/b"), ReasonTooManyRedirect)
 }
 
-// A bounded redirect chain: with MaxRedirects=2, the first two in-scope hops
-// pass and every hop thereafter is rejected with ReasonTooManyRedirect, so a
-// redirect loop / unbounded chain can never run forever (Hole 3 regression).
+// MaxRedirects bounds each chain.
 func TestCheckRedirect_MaxRedirects(t *testing.T) {
 	p := scopePolicy()
 	p.AllowRedirects = true
@@ -318,32 +293,51 @@ func TestCheckRedirect_MaxRedirects(t *testing.T) {
 	c := NewChecker(p, publicResolver())
 	c.ResetRedirects()
 
-	// Hops 1 and 2 are within the budget.
+	// Hops 1 and 2 are within budget.
 	if err := c.CheckRedirect("https://app.example.com/a", "https://app.example.com/b"); err != nil {
 		t.Fatalf("hop 1 should pass, got %v", err)
 	}
 	if err := c.CheckRedirect("https://app.example.com/b", "https://app.example.com/c"); err != nil {
 		t.Fatalf("hop 2 should pass, got %v", err)
 	}
-	// Every subsequent hop (here driven 100 times like a redirect loop) is
-	// rejected once the chain exceeds MaxRedirects.
+	// Later hops stay rejected.
 	for i := 0; i < 100; i++ {
 		err := c.CheckRedirect("https://app.example.com/c", "https://app.example.com/d")
 		assertReject(t, err, ReasonTooManyRedirect)
 	}
 
-	// ResetRedirects starts a fresh chain, so the budget is available again.
+	// Reset starts a fresh chain.
 	c.ResetRedirects()
 	if err := c.CheckRedirect("https://app.example.com/a", "https://app.example.com/b"); err != nil {
 		t.Fatalf("hop 1 after reset should pass, got %v", err)
 	}
 }
 
-// Per-range Block* flags are honored independently of the global
-// InternalAssessment escape hatch: turning a single flag off un-blocks exactly
-// that range while every other range stays blocked (Hole 4 regression).
+func TestCheckURL_ExternalFinalOnlyAfterInitial(t *testing.T) {
+	p := scopePolicy()
+	p.AllowExternalFinal = true
+	p.ExternalFinalOrigins = []Origin{{Scheme: "http", Host: "fake-0001.oast.test", Port: 80}}
+	c := NewChecker(p, publicResolver())
+
+	_, err := c.CheckURL("http://fake-0001.oast.test/", PhaseInitial)
+	assertReject(t, err, ReasonOutOfScopeHost)
+
+	su, err := c.CheckURL("http://fake-0001.oast.test/", PhaseBrowserNav)
+	if err != nil {
+		t.Fatalf("external final should pass in browser phase, got %v", err)
+	}
+	want := Origin{Scheme: "http", Host: "fake-0001.oast.test", Port: 80}
+	if !su.Origin.Equal(want) {
+		t.Fatalf("origin = %v, want %v", su.Origin, want)
+	}
+
+	_, err = c.CheckURL("http://other.oast.test/", PhaseBrowserNav)
+	assertReject(t, err, ReasonOutOfScopeHost)
+}
+
+// Per-range Block* flags are independent.
 func TestCheckURL_PerRangeBlockFlags(t *testing.T) {
-	// BlockLoopback=false should permit 127.0.0.1 while private stays blocked.
+	// Loopback only.
 	p := ipPolicy()
 	p.BlockLoopback = false
 	c := NewChecker(p, publicResolver())
@@ -355,14 +349,14 @@ func TestCheckURL_PerRangeBlockFlags(t *testing.T) {
 	if len(su.PinnedIP) != 1 || !su.PinnedIP[0].Equal(net.ParseIP("127.0.0.1")) {
 		t.Fatalf("pinned IP = %v, want [127.0.0.1]", su.PinnedIP)
 	}
-	// The other ranges are still blocked under the same policy.
+	// Private stays blocked.
 	if _, err := c.CheckURL("http://10.0.0.1/", PhaseInitial); err == nil {
 		t.Fatalf("BlockPrivateIPs=true should still block 10.0.0.1")
 	} else {
 		assertReject(t, err, ReasonBlockedIP)
 	}
 
-	// Conversely, BlockPrivateIPs=false permits 10.0.0.1 but loopback stays blocked.
+	// Private only.
 	p2 := ipPolicy()
 	p2.BlockPrivateIPs = false
 	c2 := NewChecker(p2, publicResolver())
@@ -372,38 +366,31 @@ func TestCheckURL_PerRangeBlockFlags(t *testing.T) {
 	assertReject(t, mustErr(c2.CheckURL("http://127.0.0.1/", PhaseInitial)), ReasonBlockedIP)
 }
 
-// mustErr discards the SafeURL and returns only the error, for inline assertions.
+// mustErr keeps inline assertions short.
 func mustErr(_ *SafeURL, err error) error { return err }
 
-// An ASCII label containing an underscore is tolerated even when a sibling label
-// is unicode: the host is IDNA-mapped (the unicode label is punycoded) without
-// the STD3 hostname rule rejecting '_' (Hole 5 regression). The rejection, if
-// any, must be by scope — not ReasonBadHost.
+// Underscore plus IDN is scope-checked.
 func TestCheckURL_UnderscoreIDNHost(t *testing.T) {
 	p := scopePolicy()
-	// Put the punycoded form of srv_münchen.example.com in scope so a pass proves
-	// the underscore did not cause an IDNA rejection.
+	// In-scope punycode proves IDNA success.
 	p.AllowedHosts = []string{"xn--srv_mnchen-eeb.example.com"}
 	c := NewChecker(p, publicResolver())
 
 	su, err := c.CheckURL("https://srv_münchen.example.com/", PhaseInitial)
 	if err != nil {
-		// A ReasonBadHost here is the bug being regressed against.
+		// ReasonBadHost would be the bug.
 		t.Fatalf("underscore+IDN host should not be rejected as bad host, got %v", err)
 	}
 	if su.Origin.Host != "xn--srv_mnchen-eeb.example.com" {
 		t.Fatalf("normalized host = %q, want xn--srv_mnchen-eeb.example.com", su.Origin.Host)
 	}
 
-	// And it must NOT be rejected with ReasonBadHost when out of the configured
-	// scope: a different scope yields ReasonOutOfScopeHost, proving IDNA succeeded.
+	// Out of scope still means IDNA succeeded.
 	p2 := scopePolicy() // AllowedHosts = app.example.com
 	c2 := NewChecker(p2, publicResolver())
 	_, err = c2.CheckURL("https://srv_münchen.example.com/", PhaseInitial)
 	assertReject(t, err, ReasonOutOfScopeHost)
 }
-
-// --- Extra adversarial bypass cases ------------------------------------------
 
 func TestCheckURL_AdversarialBypass(t *testing.T) {
 	c := NewChecker(scopePolicy(), publicResolver())
@@ -413,28 +400,25 @@ func TestCheckURL_AdversarialBypass(t *testing.T) {
 		raw        string
 		wantReason string
 	}{
-		// 1. Backslash + userinfo host trick — net/url rejects the malformed
-		// userinfo before any host comparison; it must never be accepted as
-		// in-scope app.example.com.
+		// Backslash + userinfo trick.
 		{"backslash userinfo", "https://app.example.com\\@evil.com/", ReasonUnparseable},
-		// 2. Mixed-case scheme must be lower-cased and still scope-checked.
+		// Scheme lowercased before scope.
 		{"mixed case scheme bad", "HtTpS://evil.com/", ReasonOutOfScopeHost},
-		// 3. Encoded-dot host: %2e is an invalid escape in the authority, so
-		// net/url rejects it rather than silently decoding "app.example.com".
+		// Encoded dot is invalid authority.
 		{"encoded dot host", "https://app%2eexample.com/", ReasonUnparseable},
-		// 4. Port 0 is not in AllowedPorts(443).
+		// Port 0 is out of scope.
 		{"port zero", "https://app.example.com:0/", ReasonBadPort},
-		// 5. Embedded control char (tab) inside the URL is rejected up front.
+		// Tab is rejected before parsing.
 		{"embedded tab", "https://app.example.com\t/", ReasonControlChar},
-		// 6. Embedded newline.
+		// Newline is rejected before parsing.
 		{"embedded newline", "https://app.example.com\n/", ReasonControlChar},
-		// 7. CRLF host-header smuggling attempt.
+		// CRLF smuggling attempt.
 		{"crlf smuggle", "https://app.example.com\r\nHost: evil.com/", ReasonControlChar},
-		// 8. Disallowed explicit port even on the right host.
+		// Wrong explicit port.
 		{"wrong explicit port", "https://app.example.com:8443/", ReasonBadPort},
-		// 9. Empty host (scheme but no authority host).
+		// Scheme without authority host.
 		{"empty host", "https:///path", ReasonEmptyHost},
-		// 10. Whitespace-padded URL is trimmed, then handled normally.
+		// Surrounding whitespace is trimmed.
 		{"leading whitespace evil", "   https://evil.com/", ReasonOutOfScopeHost},
 	}
 
@@ -446,7 +430,7 @@ func TestCheckURL_AdversarialBypass(t *testing.T) {
 	}
 }
 
-// Mixed-case scheme on an IN-scope host must succeed (scheme is lower-cased).
+// Mixed-case in-scope URL succeeds.
 func TestCheckURL_MixedCaseSchemeInScope(t *testing.T) {
 	c := NewChecker(scopePolicy(), publicResolver())
 	su, err := c.CheckURL("HTTPS://APP.Example.COM/", PhaseInitial)
@@ -457,8 +441,6 @@ func TestCheckURL_MixedCaseSchemeInScope(t *testing.T) {
 		t.Fatalf("origin = %v, want https://app.example.com", su.Origin)
 	}
 }
-
-// --- ClassifyIP unit table ---------------------------------------------------
 
 func TestClassifyIP(t *testing.T) {
 	cases := []struct {
@@ -473,11 +455,10 @@ func TestClassifyIP(t *testing.T) {
 		{"192.168.1.1", true, ipReasonPrivate},
 		{"169.254.0.1", true, ipReasonLinkLocal},
 		{"fe80::1", true, ipReasonLinkLocal},
-		// 224.0.0.0/24 and ff02::/16 are link-local multicast — the more specific
-		// link_local reason wins by design.
+		// Link-local reason wins.
 		{"224.0.0.1", true, ipReasonLinkLocal},
 		{"ff02::1", true, ipReasonLinkLocal},
-		// Globally-scoped multicast falls through to the multicast reason.
+		// Global multicast reason.
 		{"239.1.2.3", true, ipReasonMulticast},
 		{"ff0e::1", true, ipReasonMulticast},
 		{"0.0.0.0", true, ipReasonUnspecified},
@@ -486,8 +467,7 @@ func TestClassifyIP(t *testing.T) {
 		{"::ffff:10.0.0.1", true, ipReasonPrivate},
 		{"::ffff:127.0.0.1", true, ipReasonLoopback},
 		{"fc00::1", true, ipReasonUniqueLocal},
-		// IPv4-compatible IPv6 (::a.b.c.d) and NAT64 (64:ff9b::a.b.c.d) embed a v4
-		// that To4() does not collapse; they must classify by the embedded v4 range.
+		// Embedded v4 controls classification.
 		{"::127.0.0.1", true, ipReasonLoopback},
 		{"::a9fe:a9fe", true, ipReasonCloudMeta},        // 169.254.169.254
 		{"::a9fe:101", true, ipReasonLinkLocal},         // 169.254.1.1
@@ -516,8 +496,6 @@ func TestClassifyIP(t *testing.T) {
 		})
 	}
 }
-
-// --- ParseHostIP unit table --------------------------------------------------
 
 func TestParseHostIP(t *testing.T) {
 	cases := []struct {

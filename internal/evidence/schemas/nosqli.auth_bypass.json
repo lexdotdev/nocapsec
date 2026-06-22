@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "nosqli.auth_bypass",
+  "description": "NoSQL (Mongo) operator-injection auth bypass: an operator-object candidate arm authenticates and surfaces a DB-resident success_marker while a benign scalar control does not.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "The engine builds the candidate and control arms by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "Use injection.location.kind=json_operator (json_pointer) to plant an operator OBJECT like {\"$ne\":1}; the engine parses the payload string as a JSON fragment and sets the sub-object at the pointer. kind=json_body would only set a string scalar. The candidate payload is the operator object; the control payload is a benign scalar (e.g. a wrong password string).",
+    "proof.success_marker MUST be a value the request never carries — the matched record's field or a success-only message (e.g. \"Logged in as user\"). The engine requires it present in the candidate response, absent in the control response, and absent from the candidate request it sends (reflection guard).",
+    "Proves the auth check is bypassable via operator injection; it does not enumerate which records are reachable. Record specific account takeover as a PoC-level claim."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "nosqli.auth_bypass" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["candidate", "control"]
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["success_marker", "repetitions"],
+      "properties": {
+        "success_marker": { "type": "string", "minLength": 1 },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "nosqli-login-bypass",
+      "type": "nosqli.auth_bypass",
+      "target": {
+        "expected_origin": "http://127.0.0.1:4000",
+        "allowed_hosts": ["127.0.0.1"],
+        "allowed_schemes": ["http"],
+        "allowed_ports": [4000]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": {
+          "method": "POST",
+          "url": "http://127.0.0.1:4000/user/login",
+          "headers": [{ "name": "content-type", "value": "application/json" }],
+          "body": "{\"username\":\"admin\",\"password\":\"x\"}"
+        },
+        "injection": {
+          "location": { "kind": "json_operator", "json_pointer": "/password" },
+          "payloads": {
+            "candidate": "{\"$ne\":1}",
+            "control": "\"nocapsec_wrong_zzz\""
+          }
+        }
+      },
+      "proof": {
+        "success_marker": "Logged in as user",
+        "repetitions": 3
+      }
+    }
+  ]
+}

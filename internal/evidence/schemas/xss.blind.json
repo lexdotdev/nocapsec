@@ -1,11 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "xss.blind",
-  "description": "Blind XSS: inject an OAST URL; the proof is an out-of-band callback whose path carries the nonce.",
+  "description": "Blind XSS: inject an engine-owned OAST URL; the proof is an out-of-band callback for that correlation ID.",
   "x-flags": "-oast",
   "x-notes": [
     "evidence.mutation_slots.oast_url names where the OAST URL is written in request.body: a form field name, or \"body.<field>\".",
-    "The engine injects the allocated HTTPS OAST URL; you supply the request and the slot, not a hand-built script string.",
+    "The engine injects the allocated HTTPS OAST URL; you supply the request and the slot, not a hand-built callback.",
+    "This does not prove browser JavaScript execution; use xss.reflected or xss.stored when a browser-backed proof is possible.",
     "poll_window_seconds defaults to 900; blind XSS can be slow. Window expiry maps to not_reproduced."
   ],
   "type": "object",
@@ -37,10 +38,10 @@
     "proof": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["expected_signal", "expected_path_contains"],
+      "required": ["expected_signal"],
       "properties": {
         "expected_signal": { "type": "string", "description": "e.g. oast_http" },
-        "expected_path_contains": { "type": "string", "description": "e.g. {{nonce}}" },
+        "expected_path_contains": { "type": "string", "description": "Optional compatibility metadata; the engine proves by OAST correlation ID." },
         "poll_window_seconds": { "type": "number" }
       }
     }
@@ -68,7 +69,6 @@
       },
       "proof": {
         "expected_signal": "oast_http",
-        "expected_path_contains": "{{nonce}}",
         "poll_window_seconds": 900
       }
     }

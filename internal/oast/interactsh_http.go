@@ -9,7 +9,7 @@ import (
 	"net/http"
 )
 
-// postJSON POSTs JSON, optionally decoding out.
+// postJSON sends JSON.
 func (c *interactshClient) postJSON(ctx context.Context, path string, body any, out any) error {
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -23,7 +23,7 @@ func (c *interactshClient) postJSON(ctx context.Context, path string, body any, 
 	return c.doRequest(req, out)
 }
 
-// getJSON GETs a path, decodes JSON response.
+// getJSON decodes a JSON response.
 func (c *interactshClient) getJSON(ctx context.Context, path string, out any) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.serverURL+path, nil)
 	if err != nil {
@@ -32,7 +32,7 @@ func (c *interactshClient) getJSON(ctx context.Context, path string, out any) er
 	return c.doRequest(req, out)
 }
 
-// doRequest runs req, decodes out when non-nil.
+// doRequest decodes optional JSON.
 func (c *interactshClient) doRequest(req *http.Request, out any) error {
 	resp, err := c.client.Do(req)
 	if err != nil {

@@ -6,7 +6,8 @@
   "x-notes": [
     "The engine builds control/low/high by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
     "payloads.control is the uninjected value; delay_low/delay_high carry a small vs large shell sleep. kind=query|form needs name; json_body needs json_pointer.",
-    "Set min_median_delta_ms below the real sleep, above noise; floor is 3000. Unstable targets map to inconclusive."
+    "Set min_median_delta_ms below the real sleep, above noise; floor is 3000. Unstable targets map to Inconclusive.",
+    "If proof.timeout_ms is set it must exceed the expected high-arm delay; a high arm that sleeps longer errors and yields Inconclusive (fail-safe), never a false Verified or NotReproduced."
   ],
   "type": "object",
   "additionalProperties": false,

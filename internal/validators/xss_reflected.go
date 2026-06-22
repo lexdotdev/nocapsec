@@ -66,7 +66,7 @@ func (xssReflected) Validate(ctx context.Context, job Job, env Env) (Result, err
 		postLoad[i] = browser.Action{Kind: n}
 	}
 
-	result, err := env.Browser.Run(ctx, browser.BrowserJob{
+	result, err := runBrowser(ctx, job, env, browser.BrowserJob{
 		Entrypoint:    ev.Entrypoint,
 		AuthStateID:   job.Finding.Auth.AuthStateID,
 		PostLoad:      postLoad,
@@ -78,7 +78,7 @@ func (xssReflected) Validate(ctx context.Context, job Job, env Env) (Result, err
 		return Result{Verdict: verdict.Inconclusive}, fmt.Errorf("xss.reflected: browser: %w", err)
 	}
 
-	// Reject if navigated off-target before any signal.
+	// Off-target nav fails proof.
 	if navigatedExternal(result.Navigation, targetOrigin) {
 		return Result{Verdict: verdict.NotReproduced}, nil
 	}
@@ -135,7 +135,7 @@ func rejectScheme(raw string) bool {
 	}
 }
 
-// navigatedExternal: true if a nav left the target.
+// navigatedExternal detects target exit.
 func navigatedExternal(navs []browser.NavEvent, target policy.Origin) bool {
 	for _, n := range navs {
 		o, ok := policy.ParseOrigin(n.Origin)

@@ -1,9 +1,9 @@
 package validators
 
-// registry maps finding type to validator.
+// registry maps type to validator.
 var registry = map[string]Validator{}
 
-// Register adds v under v.Type(); dupes overwrite.
+// Register adds v by type.
 func Register(v Validator) {
 	registry[v.Type()] = v
 }

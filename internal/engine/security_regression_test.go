@@ -8,15 +8,12 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// TestSecurityRegression_AllMustReject is the table-driven security regression
-// suite. Each case constructs a malicious finding that MUST map to Rejected.
-// If any case returns Verified, NotReproduced, or Inconclusive, the security
-// model has a hole.
+// Security bypass attempts must reject.
 func TestSecurityRegression_AllMustReject(t *testing.T) {
 	cases := []struct {
 		name    string
 		finding string
-		// resolver overrides the default public resolver.
+		// resolver overrides public DNS.
 		resolver func() fakeResolver
 	}{
 		{
@@ -30,12 +27,10 @@ func TestSecurityRegression_AllMustReject(t *testing.T) {
     "allowed_schemes": ["https"]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://app.example.com/x?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 			resolver: func() fakeResolver {
 				return fakeResolver{ips: []net.IP{net.ParseIP("10.0.0.1")}}
@@ -52,21 +47,14 @@ func TestSecurityRegression_AllMustReject(t *testing.T) {
     "allowed_schemes": ["https"]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com@evil.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://app.example.com@evil.com/x?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 		},
 		{
-			// Fullwidth 'ａ' (U+FF41) in "app" becomes "app" after IDNA mapping,
-			// so the host normalizes to "app.example.com". However the evidence
-			// URL uses "ａpp.example.com" which, after normalization, matches the
-			// allowed host. The real bypass attempt is a confusable that normalizes
-			// to a DIFFERENT host: "ｅxample.com" -> "example.com", which is NOT
-			// "app.example.com".
+			// Confusable host normalizes out of scope.
 			name: "punycode/IDNA confusable bypass",
 			finding: `{
   "finding_id": "sec-punycode",
@@ -77,12 +65,10 @@ func TestSecurityRegression_AllMustReject(t *testing.T) {
     "allowed_schemes": ["https"]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://ｅxample.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://ｅxample.com/x?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 		},
 		{
@@ -96,12 +82,10 @@ func TestSecurityRegression_AllMustReject(t *testing.T) {
     "allowed_schemes": ["http"]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://169.254.169.254/latest/meta-data/"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "http://169.254.169.254/y"}
+    "base_request": {"method": "GET", "url": "http://169.254.169.254/latest/meta-data/?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 		},
 		{
@@ -115,31 +99,28 @@ func TestSecurityRegression_AllMustReject(t *testing.T) {
     "allowed_schemes": ["https"]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://evil.com/admin"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://evil.com/admin?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 		},
 		{
-			name: "redirect to internal/blocked address via control URL",
+			// Blocked base_request still rejects.
+			name: "internal/blocked address in base_request",
 			finding: `{
   "finding_id": "sec-redir-internal",
   "type": "path_traversal.file_read",
   "target": {
-    "expected_origin": "https://app.example.com",
-    "allowed_hosts": ["app.example.com"],
-    "allowed_schemes": ["https"]
+    "expected_origin": "http://127.0.0.1",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "http://127.0.0.1/y"}
+    "base_request": {"method": "GET", "url": "http://127.0.0.1/y?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 		},
 	}

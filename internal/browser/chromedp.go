@@ -17,7 +17,7 @@ const (
 	settleDelay      = 750 * time.Millisecond
 )
 
-// runner drives Chromium via CDP for a BrowserJob.
+// runner drives Chromium via CDP.
 type runner struct {
 	proxyURL string
 	execPath string
@@ -27,7 +27,7 @@ type runner struct {
 // RunnerOption configures a runner.
 type RunnerOption func(*runner)
 
-// WithProxyURL routes egress via the policy proxy.
+// WithProxyURL routes through policy.
 func WithProxyURL(u string) RunnerOption {
 	return func(r *runner) { r.proxyURL = u }
 }
@@ -42,7 +42,7 @@ func WithArtifactStore(s artifacts.ArtifactStore) RunnerOption {
 	return func(r *runner) { r.store = s }
 }
 
-// NewRunner returns a chromedp BrowserRunner.
+// NewRunner returns a BrowserRunner.
 func NewRunner(opts ...RunnerOption) BrowserRunner {
 	r := &runner{}
 	for _, o := range opts {
@@ -59,7 +59,12 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
-	taskCtx, cleanup, err := ephemeralContext(ctx, r.proxyURL, r.execPath)
+	proxyURL := job.ProxyURL
+	if proxyURL == "" {
+		proxyURL = r.proxyURL
+	}
+
+	taskCtx, cleanup, err := ephemeralContext(ctx, proxyURL, r.execPath)
 	if err != nil {
 		return BrowserResult{}, fmt.Errorf("browser: ephemeral context: %w", err)
 	}
@@ -83,7 +88,7 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 		}
 	}
 
-	// Let async events settle before snapshotting.
+	// Let async events settle.
 	_ = chromedp.Run(taskCtx, chromedp.Sleep(settleDelay)) // best-effort settle
 
 	navs, dialogs, console, netEvts := ec.snapshot()
@@ -109,7 +114,7 @@ func (r *runner) Run(parent context.Context, job BrowserJob) (BrowserResult, err
 	return result, nil
 }
 
-// hasProofSignal reports an accepted signal.
+// hasProofSignal checks accepted signals.
 func hasProofSignal(job BrowserJob, dialogs []DialogEvent, console []ConsoleEvent) bool {
 	for _, sig := range job.AcceptSignals {
 		switch sig {
@@ -132,7 +137,7 @@ func waitAction(_ string) chromedp.Action {
 	return chromedp.WaitReady("body", chromedp.ByQuery)
 }
 
-// runAction interprets a post-load Action.
+// runAction interprets post-load actions.
 func runAction(act Action) chromedp.Action {
 	switch act.Kind {
 	case "click":

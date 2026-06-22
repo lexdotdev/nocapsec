@@ -11,7 +11,7 @@ import (
 	"fmt"
 )
 
-// ensureKey lazily generates the client RSA key.
+// ensureKey lazily generates RSA.
 func (c *interactshClient) ensureKey() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -26,7 +26,7 @@ func (c *interactshClient) ensureKey() error {
 	return nil
 }
 
-// decryptAESKey RSA-OAEP decrypts session key.
+// decryptAESKey decrypts session key.
 func (c *interactshClient) decryptAESKey(encrypted string) ([]byte, error) {
 	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
 	if err != nil {
@@ -35,7 +35,7 @@ func (c *interactshClient) decryptAESKey(encrypted string) ([]byte, error) {
 	return rsa.DecryptOAEP(sha256.New(), rand.Reader, c.privKey, ciphertext, nil)
 }
 
-// decryptPayload AES-CFB decrypts a base64 payload.
+// decryptPayload decrypts payload data.
 func decryptPayload(key []byte, b64data string) ([]byte, error) {
 	data, err := base64.StdEncoding.DecodeString(b64data)
 	if err != nil {
@@ -50,12 +50,12 @@ func decryptPayload(key []byte, b64data string) ([]byte, error) {
 	}
 	iv := data[:aes.BlockSize]
 	ciphertext := data[aes.BlockSize:]
-	stream := cipher.NewCFBDecrypter(block, iv) //nolint:staticcheck // Interactsh wire protocol requires CFB
+	stream := cipher.NewCFBDecrypter(block, iv) //nolint:staticcheck // Interactsh CFB
 	stream.XORKeyStream(ciphertext, ciphertext)
 	return ciphertext, nil
 }
 
-// randomCorrelationID returns a hex correlation ID.
+// randomCorrelationID returns hex.
 func randomCorrelationID() (string, error) {
 	b, err := randomBytes(correlationIDLength / 2)
 	if err != nil {

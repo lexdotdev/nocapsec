@@ -2,12 +2,10 @@ package policy
 
 import "errors"
 
-// ResetRedirects starts a fresh chain so
-// MaxRedirects bounds one req.
+// ResetRedirects starts a fresh chain.
 func (c *Checker) ResetRedirects() { c.redirects = 0 }
 
-// CheckRedirect: per-hop re-check + chain cap;
-// no redirect to a blocked target.
+// CheckRedirect rechecks each hop.
 func (c *Checker) CheckRedirect(_, to string) error {
 	if !c.Policy.AllowRedirects {
 		return reject(ReasonTooManyRedirect, to, nil)
@@ -19,8 +17,7 @@ func (c *Checker) CheckRedirect(_, to string) error {
 		}
 	}
 	if _, err := c.CheckURL(to, PhaseRedirect); err != nil {
-		// Surface RejectionError verbatim; wrap
-		// else so the gate rejects.
+		// Preserve stable rejection reasons.
 		var re *RejectionError
 		if errors.As(err, &re) {
 			return err

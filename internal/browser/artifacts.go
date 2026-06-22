@@ -9,8 +9,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
 )
 
-// captureArtifacts grabs screenshot + DOM,
-// only on proof.
+// captureArtifacts stores proof artifacts.
 func captureArtifacts(ctx context.Context, store artifacts.ArtifactStore, jobID string) (screenshotRef, domRef string) {
 	if store == nil {
 		return "", ""

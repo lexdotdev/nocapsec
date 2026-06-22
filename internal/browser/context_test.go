@@ -20,9 +20,7 @@ func TestResolveExecPath_Precedence(t *testing.T) {
 
 func TestResolveExecPath_FallsThrough(t *testing.T) {
 	t.Setenv(chromeEnvVar, "")
-	// With no explicit path, no env var, and (most likely) no browser present in
-	// the test environment, resolution returns "" to defer to chromedp. We only
-	// assert it does not panic and yields an absolute path or empty string.
+	// Missing browser defers to chromedp.
 	got := resolveExecPath("")
 	if got != "" && !filepath.IsAbs(got) {
 		t.Fatalf("expected absolute path or empty, got %q", got)

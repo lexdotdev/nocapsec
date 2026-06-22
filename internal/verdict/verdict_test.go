@@ -73,8 +73,7 @@ func TestStampSetsDecidedAt(t *testing.T) {
 	}
 }
 
-// A terminal report omits the proof, target_origin, artifacts, and reason keys
-// when empty so reports stay boring and diffable.
+// Empty fields stay omitted.
 func TestReportJSONOmitsEmpty(t *testing.T) {
 	b, err := json.Marshal(Unproven("f5", "x", "", PolicySummary{}))
 	if err != nil {

@@ -10,8 +10,7 @@ import (
 	"time"
 )
 
-// Receiver: in-process OAST with own listeners.
-// HTTP and DNS.
+// Receiver serves local HTTP and DNS.
 type Receiver struct {
 	domain        string
 	advertiseHost string
@@ -21,14 +20,13 @@ type Receiver struct {
 	dnsConn      *net.UDPConn
 	httpAddr     string
 	dnsAddr      string
-	callbackHost string // optional hostname for callback URLs
+	callbackHost string
 
 	mu           sync.Mutex
 	interactions map[string][]Interaction // by correlationID
 }
 
-// SetCallbackHost: loopback host for targets
-// behind an SSRF guard.
+// SetCallbackHost overrides callback host.
 func (r *Receiver) SetCallbackHost(host string) { r.callbackHost = host }
 
 // NewReceiver builds an embedded receiver.
@@ -41,7 +39,7 @@ func NewReceiver(domain, advertiseHost string) *Receiver {
 	}
 }
 
-// Start serves HTTP + DNS in goroutines.
+// Start serves HTTP and DNS.
 func (r *Receiver) Start(httpAddr, dnsAddr string) error {
 	ln, err := net.Listen("tcp", httpAddr)
 	if err != nil {
@@ -70,10 +68,10 @@ func (r *Receiver) Start(httpAddr, dnsAddr string) error {
 	return nil
 }
 
-// HTTPAddr returns bound HTTP addr (after Start).
+// HTTPAddr returns the bound HTTP addr.
 func (r *Receiver) HTTPAddr() string { return r.httpAddr }
 
-// DNSAddr returns bound DNS addr (after Start).
+// DNSAddr returns the bound DNS addr.
 func (r *Receiver) DNSAddr() string { return r.dnsAddr }
 
 func (r *Receiver) NewInteraction(_ context.Context, purpose string) (*OASTToken, error) {
@@ -89,11 +87,13 @@ func (r *Receiver) NewInteraction(_ context.Context, purpose string) (*OASTToken
 		}
 	}
 	cb := fmt.Sprintf("http://%s/cb/%s", cbHost, corrID)
+	redir := fmt.Sprintf("http://%s/r/%s", cbHost, corrID)
 	return &OASTToken{
 		CorrelationID:     corrID,
 		Domain:            corrID + "." + r.domain,
 		URLHTTP:           cb,
 		URLHTTPS:          cb,
+		URLRedirect:       redir,
 		Purpose:           purpose,
 		ExpectedProtocols: expectedProtocols(purpose),
 		CreatedAt:         now,
@@ -113,10 +113,10 @@ func (r *Receiver) Poll(_ context.Context, tokenID string, since time.Time) ([]I
 	return out, nil
 }
 
-// Close is a per-token no-op; stop via Stop.
+// Close is per-token no-op.
 func (r *Receiver) Close(_ context.Context, _ string) error { return nil }
 
-// Stop shuts down the HTTP and DNS listeners.
+// Stop closes listeners.
 func (r *Receiver) Stop() {
 	if r.httpSrv != nil {
 		_ = r.httpSrv.Close()
@@ -141,18 +141,32 @@ func (r *Receiver) record(corrID, protocol, sourceIP, userAgent, raw string) {
 }
 
 func (r *Receiver) handleHTTP(w http.ResponseWriter, req *http.Request) {
-	if !strings.HasPrefix(req.URL.Path, "/cb/") {
+	switch {
+	case strings.HasPrefix(req.URL.Path, "/cb/"):
+		corrID := strings.SplitN(strings.TrimPrefix(req.URL.Path, "/cb/"), "/", 2)[0]
+		host, _, err := net.SplitHostPort(req.RemoteAddr)
+		if err != nil {
+			host = req.RemoteAddr
+		}
+		r.record(corrID, "http", host, req.UserAgent(), req.Method+" "+req.URL.Path)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+
+	case strings.HasPrefix(req.URL.Path, "/r/"):
+		// Only /cb/ records proof.
+		corrID := strings.SplitN(strings.TrimPrefix(req.URL.Path, "/r/"), "/", 2)[0]
+		cbHost := r.httpAddr
+		if r.callbackHost != "" {
+			if _, port, err := net.SplitHostPort(r.httpAddr); err == nil {
+				cbHost = net.JoinHostPort(r.callbackHost, port)
+			}
+		}
+		dest := fmt.Sprintf("http://%s/cb/%s", cbHost, corrID)
+		http.Redirect(w, req, dest, http.StatusFound)
+
+	default:
 		http.NotFound(w, req)
-		return
 	}
-	corrID := strings.SplitN(strings.TrimPrefix(req.URL.Path, "/cb/"), "/", 2)[0]
-	host, _, err := net.SplitHostPort(req.RemoteAddr)
-	if err != nil {
-		host = req.RemoteAddr
-	}
-	r.record(corrID, "http", host, req.UserAgent(), req.Method+" "+req.URL.Path)
-	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte("ok"))
 }
 
 func (r *Receiver) serveDNS() {
@@ -173,7 +187,7 @@ func (r *Receiver) serveDNS() {
 	}
 }
 
-// dnsQName parses the QNAME from a DNS query.
+// dnsQName parses QNAME.
 func dnsQName(query []byte) string {
 	if len(query) <= 12 {
 		return ""
@@ -191,7 +205,7 @@ func dnsQName(query []byte) string {
 	return strings.Join(labels, ".")
 }
 
-// dnsAnswer builds a minimal A-record response.
+// dnsAnswer builds an A response.
 func dnsAnswer(query []byte, advertiseHost string) []byte {
 	if len(query) <= 12 {
 		return nil

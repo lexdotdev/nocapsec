@@ -11,7 +11,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// maxBodyBytes caps request body reads (1 MiB).
+// maxBodyBytes caps request bodies.
 const maxBodyBytes = 1 << 20
 
 // server adapts an Engine to the HTTP API.
@@ -32,7 +32,7 @@ func (s *server) handler() http.Handler {
 	return mux
 }
 
-// postVerify validates evidence, then dispatches.
+// postVerify accepts async jobs.
 func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes))
 	if err != nil {
@@ -40,7 +40,7 @@ func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Invalid findings get 422 synchronously.
+	// Invalid findings return 422 now.
 	_, parseErr := evidence.Parse(body)
 	if parseErr != nil {
 		reason := "parse_error"
@@ -63,8 +63,8 @@ func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 
 	s.engine.jobs.put(jobID, verdict.NewReport("", "", "running"))
 
-	// Background: 202 returns before pipeline finishes.
-	go func(raw []byte) { //nolint:contextcheck // async pipeline outlives the HTTP request
+	// 202 returns before pipeline finishes.
+	go func(raw []byte) { //nolint:contextcheck // async job
 		report, _ := s.engine.Verify(context.Background(), raw)
 		s.engine.jobs.put(jobID, report)
 	}(body)
@@ -75,8 +75,7 @@ func (s *server) postVerify(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// getVerify returns the current Report for a job,
-// or 404 if unknown.
+// getVerify returns current report.
 func (s *server) getVerify(w http.ResponseWriter, r *http.Request) {
 	report, ok := s.engine.jobs.get(r.PathValue("id"))
 	if !ok {

@@ -10,11 +10,10 @@ import (
 	"github.com/chromedp/chromedp"
 )
 
-// osWindows is runtime.GOOS on Windows.
+// osWindows names Windows.
 const osWindows = "windows"
 
-// ephemeralContext: throwaway profile,
-// egress via policy proxy.
+// ephemeralContext uses a throwaway profile.
 func ephemeralContext(parent context.Context, proxyURL, execPath string) (ctx context.Context, cleanup func(), err error) {
 	dir, err := os.MkdirTemp("", "nocapsec-browser-*")
 	if err != nil {
@@ -49,16 +48,16 @@ func ephemeralContext(parent context.Context, proxyURL, execPath string) (ctx co
 	cleanup = func() {
 		taskCancel()
 		allocCancel()
-		os.RemoveAll(dir) //nolint:errcheck // best-effort cleanup of temp dir
+		os.RemoveAll(dir) //nolint:errcheck // best effort
 	}
 
 	return taskCtx, cleanup, nil
 }
 
-// chromeEnvVar pins the browser binary.
+// chromeEnvVar pins Chrome.
 const chromeEnvVar = "NOCAPSEC_CHROME_PATH"
 
-// chromeCommands are names looked up on PATH.
+// chromeCommands are PATH names.
 var chromeCommands = []string{
 	"google-chrome",
 	"google-chrome-stable",
@@ -67,8 +66,7 @@ var chromeCommands = []string{
 	"chrome",
 }
 
-// resolveExecPath finds the browser;
-// "" defers to chromedp.
+// resolveExecPath locates Chrome.
 func resolveExecPath(explicit string) string {
 	if explicit != "" {
 		return explicit
@@ -89,7 +87,7 @@ func resolveExecPath(explicit string) string {
 	return ""
 }
 
-// chromeInstallPaths lists install paths per OS.
+// chromeInstallPaths lists common paths.
 func chromeInstallPaths() []string {
 	switch runtime.GOOS {
 	case "darwin":
@@ -129,7 +127,7 @@ func chromeInstallPaths() []string {
 	}
 }
 
-// isExecutableFile reports if path is runnable.
+// isExecutableFile checks runnability.
 func isExecutableFile(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil || info.IsDir() {

@@ -8,20 +8,19 @@ import (
 	"strings"
 )
 
-// Stable reason codes for an invalid finding.
+// Stable invalid reason codes.
 const (
 	ReasonEmptyBody         = "empty_body"
 	ReasonMalformedJSON     = "malformed_json"
 	ReasonMissingField      = "missing_field"
 	ReasonUnknownType       = "unknown_type"
 	ReasonSchemaViolation   = "schema_violation"
-	ReasonInlinedCredential = "inlined_credential" //nolint:gosec // G101 false positive: a reason code, not a secret
+	ReasonInlinedCredential = "inlined_credential" //nolint:gosec // reason code
 	ReasonBadURL            = "bad_url"
 	ReasonDanglingSlot      = "dangling_mutation_slot"
 )
 
-// InvalidError unwraps to ErrInvalid.
-// Reason is the report code, cause the JSON path.
+// InvalidError carries a stable reason.
 type InvalidError struct {
 	Reason string
 	Field  string
@@ -45,10 +44,7 @@ func invalid(reason, field string, cause error) *InvalidError {
 	return &InvalidError{Reason: reason, Field: field, cause: cause}
 }
 
-// Parse: untrusted JSON -> validated Finding.
-// Schema, reject inlined credentials,
-// canonicalize, check slots.
-// Fail-closed: no execution.
+// Parse validates untrusted JSON.
 func Parse(raw []byte) (*Finding, error) {
 	if len(bytes.TrimSpace(raw)) == 0 {
 		return nil, invalid(ReasonEmptyBody, "", nil)
@@ -71,8 +67,7 @@ func Parse(raw []byte) (*Finding, error) {
 		return nil, invalid(ReasonUnknownType, "type", nil)
 	}
 
-	// Reject inlined credentials first:
-	// security, not shape.
+	// Security before shape.
 	if name, found := findInlinedCredential(instance); found {
 		return nil, invalid(ReasonInlinedCredential, name, nil)
 	}
@@ -94,8 +89,7 @@ func Parse(raw []byte) (*Finding, error) {
 	return &f, nil
 }
 
-// findInlinedCredential finds cookie/auth headers.
-// They must reference auth_state_id, not inline it.
+// findInlinedCredential rejects raw auth.
 func findInlinedCredential(v any) (string, bool) {
 	switch t := v.(type) {
 	case map[string]any:
@@ -127,7 +121,7 @@ func findInlinedCredential(v any) (string, bool) {
 	return "", false
 }
 
-// validateMutationSlots rejects unreal positions.
+// validateMutationSlots rejects dangling slots.
 func validateMutationSlots(f *Finding) error {
 	if len(f.Mutation) == 0 {
 		return nil
@@ -141,7 +135,7 @@ func validateMutationSlots(f *Finding) error {
 	return nil
 }
 
-// slotResolves reports if loc is a real position.
+// slotResolves checks slot targets.
 func slotResolves(loc string, reqs []Request) bool {
 	switch {
 	case loc == "":
@@ -183,7 +177,7 @@ func slotResolves(loc string, reqs []Request) bool {
 	}
 }
 
-// anyContains matches token/{{token}} in URL/body.
+// anyContains checks URL/body tokens.
 func anyContains(reqs []Request, token string) bool {
 	braced := "{{" + token + "}}"
 	for _, r := range reqs {
@@ -195,7 +189,7 @@ func anyContains(reqs []Request, token string) bool {
 	return false
 }
 
-// anyPointer reports if a pointer resolves in body.
+// anyPointer checks JSON bodies.
 func anyPointer(reqs []Request, pointer string) bool {
 	for _, r := range reqs {
 		if r.Body == "" {
@@ -212,8 +206,7 @@ func anyPointer(reqs []Request, pointer string) bool {
 	return false
 }
 
-// pointerResolves walks an RFC 6901 JSON pointer
-// through a body.
+// pointerResolves walks JSON Pointer.
 func pointerResolves(doc any, pointer string) bool {
 	if pointer == "/" {
 		return true

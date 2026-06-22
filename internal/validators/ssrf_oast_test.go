@@ -20,7 +20,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// testOASTClock is a controllable clock for OAST tests.
+// testOASTClock is controllable.
 type testOASTClock struct {
 	mu  sync.Mutex
 	now time.Time
@@ -48,7 +48,7 @@ func (c *testOASTClock) Advance(d time.Duration) {
 	c.now = c.now.Add(d)
 }
 
-// fastPollConfig returns a PollConfig suitable for tests (1ms real sleeps).
+// fastPollConfig keeps tests quick.
 func fastPollConfig() *oast.PollConfig {
 	return &oast.PollConfig{
 		InitialWait: 1 * time.Millisecond,
@@ -58,7 +58,7 @@ func fastPollConfig() *oast.PollConfig {
 	}
 }
 
-// ssrfEnforcer builds a PolicyEnforcer that allows the httptest server.
+// ssrfEnforcer allows the test server.
 func ssrfEnforcer(t *testing.T, srv *httptest.Server) validators.PolicyEnforcer {
 	t.Helper()
 	ip, port := serverAddr(t, srv)
@@ -119,7 +119,7 @@ func buildSSRFJob(t *testing.T, port int) validators.Job {
 	}
 }
 
-// TestSSRFOASTVerified: target server fetches the OAST URL -> verified.
+// Target callback verifies SSRF.
 func TestSSRFOASTVerified(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
@@ -139,7 +139,7 @@ func TestSSRFOASTVerified(t *testing.T) {
 
 	job := buildSSRFJob(t, port)
 
-	// Inject a target-sourced callback after token allocation.
+	// Inject target-sourced callback.
 	go func() {
 		time.Sleep(2 * time.Millisecond)
 		for i := 0; i < 200; i++ {
@@ -176,7 +176,7 @@ func TestSSRFOASTVerified(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTNotReproducedNoCallback: no OAST callback -> not_reproduced.
+// No callback is not_reproduced.
 func TestSSRFOASTNotReproducedNoCallback(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
@@ -226,7 +226,7 @@ func TestSSRFOASTNotReproducedNoCallback(t *testing.T) {
 		},
 	}
 
-	// Advance clock past the window after allocation happens inside Validate.
+	// Expire the poll window.
 	go func() {
 		time.Sleep(5 * time.Millisecond)
 		clk.Advance(200 * time.Second)
@@ -250,7 +250,7 @@ func TestSSRFOASTNotReproducedNoCallback(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTNotReproducedVerifierOnly: only verifier-browser callback -> not_reproduced.
+// Verifier-only callback is ignored.
 func TestSSRFOASTNotReproducedVerifierOnly(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
@@ -265,7 +265,7 @@ func TestSSRFOASTNotReproducedVerifierOnly(t *testing.T) {
 	v, _ := validators.Lookup("ssrf.oast")
 	job := buildSSRFJob(t, port)
 
-	// Inject a verifier-browser callback (HeadlessChrome UA, non-target IP).
+	// Inject verifier-browser callback.
 	go func() {
 		time.Sleep(2 * time.Millisecond)
 		for i := 0; i < 200; i++ {
@@ -302,7 +302,7 @@ func TestSSRFOASTNotReproducedVerifierOnly(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTInvalidEvidence: bad evidence JSON -> invalid.
+// Bad SSRF evidence is invalid.
 func TestSSRFOASTInvalidEvidence(t *testing.T) {
 	v, _ := validators.Lookup("ssrf.oast")
 	job := validators.Job{
@@ -325,7 +325,7 @@ func TestSSRFOASTInvalidEvidence(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTMissingInjectionLocation: no injection location -> invalid.
+// Missing slot is invalid.
 func TestSSRFOASTMissingInjectionLocation(t *testing.T) {
 	v, _ := validators.Lookup("ssrf.oast")
 	ev, _ := json.Marshal(map[string]any{
@@ -356,7 +356,7 @@ func TestSSRFOASTMissingInjectionLocation(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTNoOASTBackend: nil OAST -> inconclusive.
+// Missing OAST is inconclusive.
 func TestSSRFOASTNoOASTBackend(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -385,7 +385,7 @@ func TestSSRFOASTNoOASTBackend(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTRejectedByPolicy: out-of-scope URL -> rejected.
+// Out-of-scope URL is rejected.
 func TestSSRFOASTRejectedByPolicy(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -427,7 +427,7 @@ func TestSSRFOASTRejectedByPolicy(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTNestedJSONPointer: injection into a nested JSON path.
+// Nested JSON pointer injection.
 func TestSSRFOASTNestedJSONPointer(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
@@ -631,7 +631,198 @@ func TestSSRFOASTQueryInjection(t *testing.T) {
 	}
 }
 
-// TestSSRFOASTNoiseCallbackIgnored: only noise callbacks -> not_reproduced.
+// X-Forwarded-Host reaches fetch.
+func TestSSRFOASTHeaderXForwardedHost(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotXFH string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotXFH = r.Header.Get("X-Forwarded-Host")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("ssrf.oast")
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "GET",
+			"url":    base + "/setup/prereq-check",
+			"headers": []map[string]string{
+				{"name": "X-Forwarded-Host", "value": "placeholder.invalid"},
+			},
+		},
+		"injection_location": map[string]string{
+			"kind": "header",
+			"name": "X-Forwarded-Host",
+		},
+		"expected_protocols": []string{"http", "dns"},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":             "oast_interaction",
+		"poll_window_seconds":         30,
+		"require_source_not_verifier": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-ssrf-xfh",
+			Type:      "ssrf.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "xfh-nonce",
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			if tok := findFakeToken(fake); tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "curl/8.0",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+	// OAST authority replaces placeholder.
+	if gotXFH == "placeholder.invalid" || gotXFH == "" {
+		t.Fatalf("X-Forwarded-Host not injected: %q", gotXFH)
+	}
+	if !containsSubstring(gotXFH, "oast.test") {
+		t.Fatalf("injected X-Forwarded-Host missing OAST authority: %q", gotXFH)
+	}
+	if containsSubstring(gotXFH, "http://") || containsSubstring(gotXFH, "https://") {
+		t.Fatalf("header value should be scheme-stripped authority, got %q", gotXFH)
+	}
+}
+
+// Host injection reaches req.Host.
+func TestSSRFOASTHostHeaderReachesWire(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("ssrf.oast")
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "GET",
+			"url":    base + "/page",
+			"headers": []map[string]string{
+				{"name": "Host", "value": "placeholder.invalid"},
+			},
+		},
+		"injection_location": map[string]string{
+			"kind": "header",
+			"name": "Host",
+		},
+		"expected_protocols": []string{"http", "dns"},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":             "oast_interaction",
+		"poll_window_seconds":         30,
+		"require_source_not_verifier": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-ssrf-host",
+			Type:      "ssrf.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "host-nonce",
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			if tok := findFakeToken(fake); tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "PhantomJS",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+	// Injected Host reaches the wire.
+	if gotHost == "placeholder.invalid" || gotHost == "" {
+		t.Fatalf("Host header not injected onto the wire: %q", gotHost)
+	}
+	if !containsSubstring(gotHost, "oast.test") {
+		t.Fatalf("injected Host missing OAST authority: %q", gotHost)
+	}
+}
+
+// Noise callbacks are ignored.
 func TestSSRFOASTNoiseCallbackIgnored(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
@@ -646,7 +837,7 @@ func TestSSRFOASTNoiseCallbackIgnored(t *testing.T) {
 	v, _ := validators.Lookup("ssrf.oast")
 	job := buildSSRFJob(t, port)
 
-	// Inject a noise callback (unrelated IP, unrelated UA).
+	// Inject noise callback.
 	go func() {
 		time.Sleep(2 * time.Millisecond)
 		for i := 0; i < 200; i++ {
@@ -683,7 +874,114 @@ func TestSSRFOASTNoiseCallbackIgnored(t *testing.T) {
 	}
 }
 
-// findFakeToken retrieves the first allocated token ID from the fake.
+// via_redirect proves followed callback.
+func TestSSRFOASTViaRedirect(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 4096)
+		n, _ := r.Body.Read(buf)
+		gotBody = string(buf[:n])
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, ok := validators.Lookup("ssrf.oast")
+	if !ok {
+		t.Fatal("validator not registered")
+	}
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "POST",
+			"url":    base + "/fetch",
+			"headers": []map[string]string{
+				{"name": "content-type", "value": "application/json"},
+			},
+			"body": `{"url":"https://placeholder.example.com"}`,
+		},
+		"injection_location": map[string]string{
+			"kind":         "json_body",
+			"json_pointer": "/url",
+		},
+		"expected_protocols": []string{"http"},
+		"via_redirect":       true,
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":             "oast_interaction",
+		"poll_window_seconds":         30,
+		"require_source_not_verifier": true,
+	})
+
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-ssrf-redirect",
+			Type:      "ssrf.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "redir-nonce",
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			tok := findFakeToken(fake)
+			if tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "Python-urllib/3.11",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+
+	// Injected URL must be the redirector.
+	if gotBody == "" {
+		t.Fatal("target received no body")
+	}
+	if !containsSubstring(gotBody, "/r") {
+		t.Fatalf("injected URL should be redirector (contain /r), got body: %q", gotBody)
+	}
+	if containsSubstring(gotBody, "/cb/") {
+		t.Fatalf("injected URL should NOT be direct callback, got body: %q", gotBody)
+	}
+}
+
+// findFakeToken returns first fake token.
 func findFakeToken(f *oast.Fake) string {
 	for id := 1; id <= 20; id++ {
 		corrID := fakeCorrID(id)

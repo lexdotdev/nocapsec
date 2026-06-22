@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// validPathTraversal is a well-formed finding reused across accept tests. The
-// request host is deliberately mixed-case to exercise canonicalization.
+// validPathTraversal exercises canonicalization.
 const validPathTraversal = `{
   "finding_id": "pt-1",
   "type": "path_traversal.file_read",
@@ -19,12 +18,13 @@ const validPathTraversal = `{
   },
   "auth": {"required": false},
   "evidence": {
-    "request": {"method": "GET", "url": "https://APP.Example.com/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["VERIFIER_CANARY_FILE_2026"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "https://APP.Example.com/download?file=welcome.txt"},
+    "injection": {
+      "location": {"kind": "query", "name": "file"},
+      "payloads": {"candidate": "../../../../etc/passwd", "control": "welcome.txt"}
+    }
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "root:x:0:0:", "repetitions": 2}
 }`
 
 func mustParse(t *testing.T, raw string) *Finding {
@@ -190,27 +190,27 @@ func TestParseRejects(t *testing.T) {
 		},
 		{
 			"missing required evidence field",
-			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x"}},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
+			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"base_request":{"method":"GET","url":"https://a/x"}},"proof":{"expected_marker":"M","repetitions":2}}`,
 			ReasonSchemaViolation,
 		},
 		{
 			"unknown evidence field (strict)",
-			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x"},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"},"extra":1},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
+			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"base_request":{"method":"GET","url":"https://a/x?file=1"},"injection":{"location":{"kind":"query","name":"file"},"payloads":{"candidate":"a","control":"b"}},"extra":1},"proof":{"expected_marker":"M","repetitions":2}}`,
 			ReasonSchemaViolation,
 		},
 		{
-			"evidence request missing url",
-			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET"},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"}},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
+			"evidence base_request missing url",
+			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"base_request":{"method":"GET"},"injection":{"location":{"kind":"query","name":"file"},"payloads":{"candidate":"a","control":"b"}}},"proof":{"expected_marker":"M","repetitions":2}}`,
 			ReasonSchemaViolation,
 		},
 		{
-			"evidence request inlines authorization header",
-			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x","headers":[{"name":"Authorization","value":"Bearer x"}]},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"}},"proof":{"require_marker":true,"require_negative_control_absent":true}}`,
+			"evidence base_request inlines authorization header",
+			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"base_request":{"method":"GET","url":"https://a/x?file=1","headers":[{"name":"Authorization","value":"Bearer x"}]},"injection":{"location":{"kind":"query","name":"file"},"payloads":{"candidate":"a","control":"b"}}},"proof":{"expected_marker":"M","repetitions":2}}`,
 			ReasonInlinedCredential,
 		},
 		{
 			"proof field wrong type",
-			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"request":{"method":"GET","url":"https://a/x"},"vulnerable_parameter":"file","expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"}},"proof":{"require_marker":"yes","require_negative_control_absent":true}}`,
+			`{"finding_id":"a","type":"path_traversal.file_read","target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},"evidence":{"base_request":{"method":"GET","url":"https://a/x?file=1"},"injection":{"location":{"kind":"query","name":"file"},"payloads":{"candidate":"a","control":"b"}}},"proof":{"expected_marker":"M","repetitions":"two"}}`,
 			ReasonSchemaViolation,
 		},
 		{
@@ -227,22 +227,21 @@ func TestParseRejects(t *testing.T) {
 	}
 }
 
-// Canonicalization lower-cases the request scheme/host (preserving path + query)
-// and canonicalizes header names, in place inside the per-type evidence.
+// Evidence request URLs are canonicalized.
 func TestCanonicalizeLowercasesEvidenceRequests(t *testing.T) {
 	f := mustParse(t, validPathTraversal)
 
 	var ev struct {
-		Request struct {
+		BaseRequest struct {
 			URL string `json:"url"`
-		} `json:"request"`
+		} `json:"base_request"`
 	}
 	if err := json.Unmarshal(f.Evidence, &ev); err != nil {
 		t.Fatalf("evidence not an object: %v", err)
 	}
-	const want = "https://app.example.com/download?file=../../etc/passwd"
-	if ev.Request.URL != want {
-		t.Fatalf("canonical url = %q, want %q", ev.Request.URL, want)
+	const want = "https://app.example.com/download?file=welcome.txt"
+	if ev.BaseRequest.URL != want {
+		t.Fatalf("canonical url = %q, want %q", ev.BaseRequest.URL, want)
 	}
 }
 
@@ -259,8 +258,7 @@ func TestCanonicalizeHeaderNames(t *testing.T) {
 	}
 }
 
-// A userinfo/punycode URL in evidence is not the evidence layer's job to reject
-// (that is the policy gate); canonicalization must handle it without erroring.
+// Policy rejects adversarial URLs later.
 func TestCanonicalizeToleratesAdversarialURLs(t *testing.T) {
 	for _, raw := range []string{
 		"https://example.com@evil.com/",
@@ -309,19 +307,16 @@ func TestMutationSlotResolution(t *testing.T) {
 	}
 }
 
-// A declared slot that points at a real query parameter is accepted; a dangling
-// one makes the finding invalid.
+// Dangling mutation slots are invalid.
 func TestParseMutationSlots(t *testing.T) {
 	resolving := `{
   "finding_id": "m-1", "type": "path_traversal.file_read",
   "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com/download?file=../../etc/passwd&cb=0"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "https://app.example.com/download?file=welcome.txt&cb=0"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "welcome.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true},
+  "proof": {"expected_marker": "M", "repetitions": 2},
   "mutation_slots": {"cachebuster": "query:cb"}
 }`
 	mustParse(t, resolving)
@@ -330,19 +325,16 @@ func TestParseMutationSlots(t *testing.T) {
   "finding_id": "m-2", "type": "path_traversal.file_read",
   "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com/download?file=x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "https://app.example.com/download?file=welcome.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "welcome.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true},
+  "proof": {"expected_marker": "M", "repetitions": 2},
   "mutation_slots": {"cachebuster": "query:does_not_exist"}
 }`
 	assertInvalid(t, dangling, ReasonDanglingSlot)
 }
 
-// Every type's example must declare at least one request, so the canonicalizer
-// and replay have something to operate on.
+// Every schema example needs a request.
 func TestEveryTypeHasRequests(t *testing.T) {
 	for _, typ := range schemaTypes() {
 		doc, _ := schemaDoc(typ)

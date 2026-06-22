@@ -16,13 +16,13 @@ import (
 var schemaFS embed.FS
 
 type compiledSchema struct {
-	doc      []byte               // original bytes, for `doc`
-	resolved *jsonschema.Resolved // resolved, for validation
+	doc      []byte
+	resolved *jsonschema.Resolved
 }
 
 var (
 	schemaRegistry map[string]*compiledSchema
-	commonDefsDoc  []byte // shared $defs, for the `doc` footer
+	commonDefsDoc  []byte
 )
 
 func init() {
@@ -31,7 +31,7 @@ func init() {
 	}
 }
 
-// loadSchemas merges $defs per type, resolves.
+// loadSchemas resolves all schemas.
 func loadSchemas() error {
 	commonDefs, err := loadCommonDefs()
 	if err != nil {
@@ -87,7 +87,7 @@ func loadCommonDefs() (map[string]json.RawMessage, error) {
 	return common.Defs, nil
 }
 
-// mergeDefs injects $defs; local $defs override.
+// mergeDefs lets local $defs override.
 func mergeDefs(raw []byte, common map[string]json.RawMessage) ([]byte, error) {
 	var doc map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &doc); err != nil {
@@ -116,8 +116,7 @@ func hasSchema(typ string) bool {
 	return ok
 }
 
-// validateInstance validates vs type schema.
-// Error carries the JSON path.
+// validateInstance runs the type schema.
 func validateInstance(typ string, instance any) error {
 	cs, ok := schemaRegistry[typ]
 	if !ok {

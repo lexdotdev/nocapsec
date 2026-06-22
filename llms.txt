@@ -7,6 +7,10 @@ finding, replays the supplied evidence under policy, and returns one verdict:
 It is not a scanner. Do not ask nocapsec to discover issues. Give it exact
 evidence: URLs, methods, headers, bodies, controls, and proof expectations.
 
+Verdicts are conditional on the target you provide. A local harness proves the
+pinned package/app running in that harness, not an arbitrary upstream deployment.
+State target provenance, version, and setup when you report evidence.
+
 ## Operating Modes
 
 ### CLI
@@ -39,6 +43,10 @@ Useful flags:
 - `-internal`: allow internal IP ranges for intentional local or intranet assessment.
 - `-authstate auth.json`: load referenced credentials for auth-backed validators.
 - `-config config.json`: load JSON config.
+
+Prefer `xss.reflected` or `xss.stored` when a browser-backed proof is possible.
+`xss.blind` is callback reachability by OAST correlation, not direct JavaScript
+execution proof.
 
 Example:
 
@@ -167,8 +175,8 @@ Requires `-browser`.
 
 ### Open Redirect
 
-Requires `-browser`. The final origin must be controlled by the verifier setup,
-such as a callback host or a local listener you start before verification.
+Requires `-browser -oast`. Put `{{oast_url}}` or `{{oast_host}}` in the redirect
+destination; the engine owns the final origin and fills it per run.
 
 ```json
 {
@@ -184,11 +192,10 @@ such as a callback host or a local listener you start before verification.
   "evidence": {
     "entrypoint": {
       "method": "GET",
-      "url": "http://127.0.0.1:3000/login?next=http://127.0.0.1:39099/nocapsec-{{nonce}}"
+      "url": "http://127.0.0.1:3000/login?next={{oast_url}}%2Fnocapsec-{{nonce}}"
     },
     "redirect_parameter": "next",
     "expected_initial_origin": "http://127.0.0.1:3000",
-    "expected_final_origin": "http://127.0.0.1:39099",
     "redirect_kind": "server_or_client",
     "max_hops": 5
   },
@@ -243,6 +250,26 @@ For JSON-body SSRF, use:
   "json_pointer": "/url"
 }
 ```
+
+`json_body` sets a string scalar at the pointer. To plant an operator-shaped JSON
+fragment (object/array/scalar) instead — e.g. `{"$ne":1}` for `nosqli.auth_bypass`
+— use `kind: "json_operator"`; the engine parses the payload and sets it as JSON.
+
+For header-injection SSRF (Host / X-Forwarded-Host style), use:
+
+```json
+"injection_location": {
+  "kind": "header",
+  "name": "X-Forwarded-Host"
+}
+```
+
+The engine plants the scheme-stripped callback authority into the named header.
+Credential headers (Cookie, Authorization) are rejected to prevent exfiltration.
+
+For path-segment traversal with no query parameter (`path_traversal.file_read`), use
+`kind: "url_token"` with a `name`: place a `{{name}}` token in the URL where the value
+goes and the engine substitutes the raw payload, so a `../` sequence survives encoding.
 
 ## Auth State
 

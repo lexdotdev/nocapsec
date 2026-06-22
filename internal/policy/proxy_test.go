@@ -4,14 +4,35 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 )
 
-func TestConnectProxy_RejectsNonCONNECT(t *testing.T) {
-	c := NewChecker(scopePolicy(), publicResolver())
+func TestConnectProxy_ForwardsHTTP(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Host == "" {
+			t.Error("missing host")
+		}
+		_, _ = w.Write([]byte("proxied"))
+	}))
+	defer upstream.Close()
+
+	host, port, err := net.SplitHostPort(upstream.Listener.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	p := URLPolicy{
+		AllowedSchemes:  []string{"http"},
+		AllowedHosts:    []string{"app.example.com"},
+		BlockLoopback:   false,
+		BlockPrivateIPs: false,
+	}
+	c := NewChecker(p, fakeResolver{ips: []net.IP{net.ParseIP(host)}})
 	proxy, err := NewConnectProxy(c)
 	if err != nil {
 		t.Fatal(err)
@@ -19,13 +40,22 @@ func TestConnectProxy_RejectsNonCONNECT(t *testing.T) {
 	proxy.Start()
 	defer func() { _ = proxy.Shutdown(context.Background()) }()
 
-	resp, err := http.Get("http://" + proxy.Addr() + "/") //nolint:noctx // test-only request
+	proxyURL, err := url.Parse(proxy.URL())
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := &http.Client{Transport: &http.Transport{Proxy: http.ProxyURL(proxyURL)}}
+	resp, err := client.Get("http://app.example.com:" + port + "/") //nolint:noctx // test
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusMethodNotAllowed {
-		t.Fatalf("status = %d, want %d", resp.StatusCode, http.StatusMethodNotAllowed)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(body) != "proxied" {
+		t.Fatalf("body = %q, want proxied", body)
 	}
 }
 

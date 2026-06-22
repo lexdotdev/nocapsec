@@ -1,4 +1,4 @@
-// Package config layers config: file < env < flags.
+// Package config layers file, env, flags.
 package config
 
 import (
@@ -59,7 +59,7 @@ func LoadFile(path string) Config {
 	if path == "" {
 		return cfg
 	}
-	data, err := os.ReadFile(path) //nolint:gosec // G304: config path is from CLI flags, not user input
+	data, err := os.ReadFile(path) //nolint:gosec // CLI config path
 	if err != nil {
 		return cfg
 	}

@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Doc returns a type's JSON Schema + $defs.
+// Doc returns schema plus shared defs.
 func Doc(typ string) (string, error) {
 	doc, ok := schemaDoc(strings.ToLower(strings.TrimSpace(typ)))
 	if !ok {

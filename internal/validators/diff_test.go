@@ -19,7 +19,7 @@ func TestFingerprintStatusDifference(t *testing.T) {
 }
 
 func TestFingerprintBodyHashMasking(t *testing.T) {
-	// Two bodies differing only in a UUID should hash the same after masking.
+	// UUID-only changes are masked.
 	bodyA := []byte(`<p>token: 550e8400-e29b-41d4-a716-446655440000</p>`)
 	bodyB := []byte(`<p>token: 6ba7b810-9dad-11d1-80b4-00c04fd430c8</p>`)
 

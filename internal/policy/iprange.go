@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-// Blocked-range sub-codes; caller maps to
-// ReasonBlockedIP.
+// Blocked range sub-codes.
 const (
 	ipReasonLoopback    = "loopback"
 	ipReasonPrivate     = "rfc1918_private"
@@ -18,18 +17,16 @@ const (
 	ipReasonUniqueLocal = "unique_local"
 )
 
-// cloudMetadataV4 is the canonical IMDS endpoint.
+// cloudMetadataV4 is IMDS.
 var cloudMetadataV4 = net.IPv4(169, 254, 169, 254)
 
-// cloudMetadataV6 is the AWS IPv6 metadata addr.
+// cloudMetadataV6 is AWS IMDS.
 var cloudMetadataV6 = net.ParseIP("fd00:ec2::254")
 
-// nat64Prefix (64:ff9b::/96) embeds v4 in low
-// 32 bits; classify it to block NAT64 bypass.
+// nat64Prefix embeds v4 in low bits.
 var nat64Prefix = [12]byte{0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0}
 
-// embeddedV4 extracts v4 from IPv4-compatible or
-// NAT64 IPv6 so it can't skip range checks.
+// embeddedV4 blocks IPv6 bypass forms.
 func embeddedV4(ip net.IP) (net.IP, bool) {
 	ip16 := ip.To16()
 	if ip16 == nil {
@@ -37,7 +34,7 @@ func embeddedV4(ip net.IP) (net.IP, bool) {
 	}
 	v4 := net.IPv4(ip16[12], ip16[13], ip16[14], ip16[15]).To4()
 
-	// NAT64 64:ff9b:: with the v4 in the low 32 bits.
+	// NAT64 64:ff9b::/96.
 	isNAT64 := true
 	for i := 0; i < 12; i++ {
 		if ip16[i] != nat64Prefix[i] {
@@ -49,23 +46,20 @@ func embeddedV4(ip net.IP) (net.IP, bool) {
 		return v4, true
 	}
 
-	// IPv4-compatible IPv6: upper 96 bits zero,
-	// v4 in the low 32.
+	// IPv4-compatible IPv6.
 	for i := 0; i < 12; i++ {
 		if ip16[i] != 0 {
 			return nil, false
 		}
 	}
-	// Exclude ::, ::1, and ::0.0.0.x; require a
-	// non-zero leading octet.
+	// Exclude ::, ::1, and ::0.0.0.x.
 	if ip16[12] == 0 {
 		return nil, false
 	}
 	return v4, true
 }
 
-// ClassifyIP reports a blocked range;
-// most specific reason wins.
+// ClassifyIP reports blocked ranges.
 func ClassifyIP(ip net.IP) (blocked bool, reason string) {
 	if ip == nil {
 		return true, ipReasonUnspecified
@@ -79,8 +73,7 @@ func ClassifyIP(ip net.IP) (blocked bool, reason string) {
 		return true, ipReasonUnspecified
 	case ip.IsLoopback():
 		return true, ipReasonLoopback
-	// Link-local before multicast so it wins for
-	// link-local multicast too.
+	// Link-local wins over multicast.
 	case ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast():
 		return true, ipReasonLinkLocal
 	case ip.IsMulticast():
@@ -94,8 +87,7 @@ func ClassifyIP(ip net.IP) (blocked bool, reason string) {
 	return false, ""
 }
 
-// canonicalForClassify collapses embedded-v4 IPv6
-// so it can't slip through.
+// canonicalForClassify collapses v4-in-v6.
 func canonicalForClassify(ip net.IP) net.IP {
 	if v4 := ip.To4(); v4 != nil {
 		return v4
@@ -106,8 +98,7 @@ func canonicalForClassify(ip net.IP) net.IP {
 	return ip
 }
 
-// ipBlockedByPolicy: per-range Block* flags;
-// fail-closed default.
+// ipBlockedByPolicy honors Block* flags.
 func (c *Checker) ipBlockedByPolicy(ip net.IP) bool {
 	blocked, reason := ClassifyIP(ip)
 	if !blocked {
@@ -134,9 +125,7 @@ func (c *Checker) ipBlockedByPolicy(ip net.IP) bool {
 	}
 }
 
-// ParseHostIP decodes inet_aton octal/hex/short
-// IP literals so they can't bypass range checks;
-// false means treat as DNS name.
+// ParseHostIP normalizes IP literals.
 func ParseHostIP(host string) (net.IP, bool) { //nolint:gocyclo // ordered IP-literal decoder
 	host = strings.TrimSpace(host)
 	if host == "" {
@@ -162,8 +151,7 @@ func ParseHostIP(host string) (net.IP, bool) { //nolint:gocyclo // ordered IP-li
 		return ip, true
 	}
 
-	// inet_aton-style: 1–4 numeric parts,
-	// each decimal/octal/hex.
+	// inet_aton-style numeric parts.
 	parts := strings.Split(host, ".")
 	if len(parts) < 1 || len(parts) > 4 {
 		return nil, false
@@ -181,8 +169,7 @@ func ParseHostIP(host string) (net.IP, bool) { //nolint:gocyclo // ordered IP-li
 		vals[i] = v
 	}
 
-	// inet_aton: last part absorbs the low bytes;
-	// earlier parts are one byte each.
+	// Last part absorbs low bytes.
 	var n uint64
 	switch len(vals) {
 	case 1: // a — whole 32-bit value
@@ -216,8 +203,7 @@ func ParseHostIP(host string) (net.IP, bool) { //nolint:gocyclo // ordered IP-li
 	return ip.To4(), true
 }
 
-// parseInetAtonPart parses one decimal/octal(0)/
-// hex(0x) part, guarding overflow.
+// parseInetAtonPart guards overflow.
 func parseInetAtonPart(p string) (uint64, bool) {
 	base := 10
 	digits := p

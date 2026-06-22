@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ssti.reflected",
+  "description": "Reflected Server-Side Template Injection proven by the template engine computing a value the engine never transmitted and returning it in the response, while a benign control does not.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "The engine builds the ssti and control arms by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "The ssti payload MUST contain the {{ssti_marker}} slot, wrapped in the target engine's own delimiters (e.g. Jinja2 \"{{ {{ssti_marker}} }}\", Twig/Freemarker/Velocity/ERB equivalents). Per run the engine substitutes {{ssti_marker}} with a fresh arithmetic expression A*B and requires the integer product to appear in the ssti response and to be absent from the control. The request carries the operands, never the product, so reflection cannot fake it.",
+    "Only sound for engines with an infix-arithmetic primitive whose output is absent from the request. Go html/template (no infix arithmetic, output html-escaped) is NOT provable here; engines needing a function call (e.g. Sprig {{ mul A B }}) are not yet covered by the A*B marker.",
+    "kind=query|form needs name; json_body needs json_pointer. For query the param must already be in base_request's URL. Proves an evaluation channel reaches the response (template injection is reachable), not a specific RCE; record code execution as a PoC-level claim."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "ssti.reflected" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "ssti"],
+              "properties": {
+                "ssti": { "type": "string", "pattern": "\\{\\{ssti_marker\\}\\}" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_marker_in_candidate", "expected_marker_absent_in_control", "repetitions"],
+      "properties": {
+        "expected_marker_in_candidate": { "type": "boolean" },
+        "expected_marker_absent_in_control": { "type": "boolean" },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "ssti-reflected-jinja2",
+      "type": "ssti.reflected",
+      "target": {
+        "expected_origin": "http://127.0.0.1:8088",
+        "allowed_hosts": ["127.0.0.1"],
+        "allowed_schemes": ["http"],
+        "allowed_ports": [8088]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": { "method": "GET", "url": "http://127.0.0.1:8088/?name=guest" },
+        "injection": {
+          "location": { "kind": "query", "name": "name" },
+          "payloads": {
+            "control": "nocapsec-{{ssti_marker}}-literal",
+            "ssti": "{{ {{ssti_marker}} }}"
+          }
+        }
+      },
+      "proof": {
+        "expected_marker_in_candidate": true,
+        "expected_marker_absent_in_control": true,
+        "repetitions": 3
+      }
+    }
+  ]
+}

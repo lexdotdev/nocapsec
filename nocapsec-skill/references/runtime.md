@@ -69,12 +69,12 @@ the finding only references a state by `auth_state_id`.
 
 - `state.id` must be unique across the file and match the finding's `auth_state_id`.
 - `allowed_origins` pins where the credential may be sent.
-- `healthcheck` (optional) lets the engine confirm the session is still valid; a failed
-  healthcheck maps to `inconclusive` rather than a false `not_reproduced`.
+- `healthcheck` is stored metadata today; the current engine checks expiry/not-found states
+  but does not execute a live healthcheck request yet.
 - **For `idor.read`**, the HTTP-replay path applies the credential **`headers`** map to the
   request (e.g. put the session in a `cookie` or `authorization` header there). Provide a
   separate entry for the owner and the attacker, with **different** ids.
-- For browser validators (`xss.stored`), the `cookies` are loaded into the browser context.
+- Browser validators carry `auth_state_id`; full browser storage injection is not wired yet.
 
 ## Reading the report
 
@@ -117,7 +117,7 @@ is filled for browser/redirect findings and is the first place to look on a `rej
 nocapsec proves a specific, bounded claim per type. Always state plainly what it did **not**
 establish. Treat these as blindspots and write them next to the finding:
 
-- **Unsupported class.** The vulnerability does not map to any of the 12 types (e.g. CSRF,
+- **Unsupported class.** The vulnerability does not map to any of the 16 types (e.g. CSRF,
   business-logic, auth bypass via logic, deserialization RCE, race/TOCTOU, DoS, stored
   secrets). Deliver a manual `poc.py` and say nocapsec cannot verify it.
 - **Out-of-band only / human-in-the-loop.** Execution requires an admin to open a page, a

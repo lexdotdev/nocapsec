@@ -1,5 +1,4 @@
-// Package authstate stores credentials
-// AES-256-GCM at rest.
+// Package authstate stores encrypted credentials.
 package authstate
 
 import (
@@ -20,7 +19,7 @@ var (
 	ErrDecrypt  = errors.New("authstate: decryption failed")
 )
 
-// Healthcheck probes that a session is still valid.
+// Healthcheck validates a session.
 type Healthcheck struct {
 	Method               string `json:"method"`
 	URL                  string `json:"url"`
@@ -28,8 +27,7 @@ type Healthcheck struct {
 	ExpectedBodyContains string `json:"expected_body_contains"`
 }
 
-// AuthState is non-secret metadata;
-// secrets in encrypted blob.
+// AuthState is non-secret metadata.
 type AuthState struct {
 	ID             string      `json:"id"`
 	Kind           string      `json:"kind"`
@@ -66,12 +64,12 @@ type Clock interface {
 	Now() time.Time
 }
 
-// wallClock is the real clock.
+// wallClock is real time.
 type wallClock struct{}
 
 func (wallClock) Now() time.Time { return time.Now() }
 
-// encryptedStore: in-memory, AES-256-GCM at rest.
+// encryptedStore keeps credentials encrypted.
 type encryptedStore struct {
 	gcm   cipher.AEAD
 	clock Clock
@@ -81,8 +79,7 @@ type encryptedStore struct {
 	blobs  map[string][]byte     // id -> encrypted credentials
 }
 
-// NewStore returns an encrypted store;
-// key 32 bytes (AES-256).
+// NewStore requires a 32-byte key.
 func NewStore(key []byte, clock Clock) (Store, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
@@ -103,7 +100,7 @@ func NewStore(key []byte, clock Clock) (Store, error) {
 	}, nil
 }
 
-// lookupState returns state for id, checks expiry.
+// lookupState checks expiry.
 func (s *encryptedStore) lookupState(id string) (*AuthState, error) {
 	st, ok := s.states[id]
 	if !ok {
@@ -122,8 +119,7 @@ func (s *encryptedStore) Get(_ context.Context, id string) (*AuthState, error) {
 	if err != nil {
 		return nil, err
 	}
-	cp := *st
-	return &cp, nil
+	return cloneState(st), nil
 }
 
 func (s *encryptedStore) GetCredentials(_ context.Context, id string) (*Credentials, error) {
@@ -158,9 +154,19 @@ func (s *encryptedStore) Put(_ context.Context, state *AuthState, creds *Credent
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.states[state.ID] = state
+	s.states[state.ID] = cloneState(state)
 	s.blobs[state.ID] = enc
 	return nil
+}
+
+func cloneState(st *AuthState) *AuthState {
+	if st == nil {
+		return nil
+	}
+	cp := *st
+	cp.AllowedOrigins = append([]string(nil), st.AllowedOrigins...)
+	cp.Contains = append([]string(nil), st.Contains...)
+	return &cp
 }
 
 func (s *encryptedStore) encrypt(plain []byte) ([]byte, error) {

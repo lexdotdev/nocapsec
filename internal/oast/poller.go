@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// Clock abstracts time for deterministic polling.
+// Clock makes polling deterministic.
 type Clock interface {
 	Now() time.Time
 	Since(time.Time) time.Duration
@@ -25,18 +25,18 @@ type PollConfig struct {
 	Multiplier  float64       // backoff growth factor
 }
 
-// PollResult is what the poller returns.
+// PollResult is a poll outcome.
 type PollResult struct {
 	Interactions []Interaction
 	Expired      bool // true if window closed with no match
 }
 
-// PollUntilMatch polls until hit or window expiry.
+// PollUntilMatch waits for a callback.
 func PollUntilMatch(ctx context.Context, backend OAST, tokenID string, since time.Time, cfg PollConfig, clock Clock) (*PollResult, error) {
 	deadline := since.Add(cfg.Window)
 	interval := cfg.MinInterval
 
-	// Wait before first poll.
+	// Respect initial delay.
 	if err := sleepCtx(ctx, cfg.InitialWait); err != nil {
 		return nil, err
 	}

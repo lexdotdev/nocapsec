@@ -7,8 +7,7 @@ import (
 	"time"
 )
 
-// Fake is an in-process OAST backend for tests.
-// No network.
+// Fake is an in-process backend.
 type Fake struct {
 	clock  Clock
 	domain string
@@ -20,7 +19,7 @@ type Fake struct {
 	closed       map[string]bool
 }
 
-// NewFake constructs a fake OAST backend.
+// NewFake builds a fake backend.
 func NewFake(clock Clock, domain string) *Fake {
 	return &Fake{
 		clock:        clock,
@@ -44,6 +43,7 @@ func (f *Fake) NewInteraction(_ context.Context, purpose string) (*OASTToken, er
 		Domain:            corrID + "." + f.domain,
 		URLHTTP:           "http://" + corrID + "." + f.domain,
 		URLHTTPS:          "https://" + corrID + "." + f.domain,
+		URLRedirect:       "http://" + corrID + "." + f.domain + "/r",
 		Purpose:           purpose,
 		ExpectedProtocols: expectedProtocols(purpose),
 		CreatedAt:         now,

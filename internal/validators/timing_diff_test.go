@@ -15,9 +15,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// Timing arms differ only in the injected query value; the clock and handlers
-// key off that value (not the path), since the engine builds all arms from one
-// base_request.
+// Timing arms vary only by slot value.
 const (
 	timingParam = "id"
 	valControl  = "1"
@@ -70,14 +68,13 @@ func timingEnv(t *testing.T, srv *httptest.Server, clock validators.Clock) valid
 	}
 }
 
-// valChanClock is a Clock that receives the injected query value from the
-// handler, returning a predetermined duration for each arm.
+// valChanClock maps values to durations.
 type valChanClock interface {
 	validators.Clock
 	recordVal(val string)
 }
 
-// pathAwareClock returns fixed durations keyed by the injected query value.
+// pathAwareClock keys off query value.
 type pathAwareClock struct {
 	vals    chan string
 	control time.Duration
@@ -115,7 +112,7 @@ func (c *pathAwareClock) recordVal(val string) {
 	c.vals <- val
 }
 
-// pathRecordingHandler sends each request's injected query value to the clock.
+// pathRecordingHandler records query value.
 func pathRecordingHandler(clock *pathAwareClock) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		clock.vals <- r.URL.Query().Get(timingParam)
@@ -132,7 +129,7 @@ func pathRecordingHandlerGeneric(clock valChanClock) http.Handler {
 	})
 }
 
-// unstableControlClock cycles through variable control durations.
+// unstableControlClock varies control timing.
 type unstableControlClock struct {
 	vals        chan string
 	controlDurs []time.Duration
@@ -262,7 +259,7 @@ func TestTimingUnstableControl(t *testing.T) {
 	}
 }
 
-// Status code mismatch between variants -> inconclusive.
+// Status mismatch is inconclusive.
 func TestTimingStatusCodeMismatch(t *testing.T) {
 	clock := newPathAwareClock(50, 1000, 5000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -339,7 +336,7 @@ func TestTimingMalformedJSON(t *testing.T) {
 	}
 }
 
-// Body dissimilarity between low and high -> inconclusive when required.
+// Body mismatch can be inconclusive.
 func TestTimingBodyDissimilar(t *testing.T) {
 	clock := newPathAwareClock(50, 1000, 5000)
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -370,9 +367,9 @@ func TestTimingBodyDissimilar(t *testing.T) {
 	}
 }
 
-// Custom repetitions and threshold from proof.
+// Client may raise threshold.
 func TestTimingCustomProof(t *testing.T) {
-	clock := newPathAwareClock(50, 500, 2000)
+	clock := newPathAwareClock(50, 1050, 5000)
 	srv := httptest.NewServer(pathRecordingHandler(clock))
 	defer srv.Close()
 
@@ -393,7 +390,7 @@ func TestTimingCustomProof(t *testing.T) {
 	})
 	proof, _ := json.Marshal(map[string]any{
 		"repetitions":             5,
-		"min_median_delta_ms":     1000,
+		"min_median_delta_ms":     3500,
 		"require_body_similarity": true,
 	})
 
@@ -421,18 +418,72 @@ func TestTimingCustomProof(t *testing.T) {
 		t.Fatalf("Validate: %v", err)
 	}
 	if result != verdict.Verified {
-		t.Fatalf("verdict = %q, want verified (custom threshold)", result)
+		t.Fatalf("verdict = %q, want verified (custom raised threshold)", result)
 	}
 }
 
-// Cheat resistance: the engine builds all three arms from one base_request, so
-// the declared injection location must exist there. A location absent from
-// base_request is invalid — no second independent request can be supplied.
-func TestTimingInjectionLocationAbsent(t *testing.T) {
-	ps := strconv.Itoa(9) // unused port; never dialed because parse fails first
+// Engine enforces timing floor.
+func TestTimingThresholdFloorEnforced(t *testing.T) {
+	// Delta is below the floor.
+	clock := newPathAwareClock(50, 1000, 2500)
+	srv := httptest.NewServer(pathRecordingHandler(clock))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
 	base := "http://app.example.com:" + ps
 
-	// base_request has no "id" query parameter, but the injection names it.
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": timingParam},
+			"payloads": map[string]string{
+				"control":    valControl,
+				"delay_low":  valLow,
+				"delay_high": valHigh,
+			},
+		},
+	})
+	// 1 ms threshold attempt to weaken the oracle.
+	proof, _ := json.Marshal(map[string]any{
+		"repetitions":             3,
+		"min_median_delta_ms":     1,
+		"require_body_similarity": true,
+	})
+
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-floor",
+			Type:      "sqli.time_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.time_based")
+	env := timingEnv(t, srv, clock)
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.NotReproduced {
+		t.Fatalf("verdict = %q, want not_reproduced (sub-floor delta rejected by engine floor)", res.Verdict)
+	}
+}
+
+// Slot must exist in base request.
+func TestTimingInjectionLocationAbsent(t *testing.T) {
+	ps := strconv.Itoa(9) // unused; parse fails first
+	base := "http://app.example.com:" + ps
+
+	// Base request lacks the slot.
 	ev, _ := json.Marshal(map[string]any{
 		"base_request": map[string]string{"method": "GET", "url": base + "/item"},
 		"injection": map[string]any{
@@ -466,5 +517,71 @@ func TestTimingInjectionLocationAbsent(t *testing.T) {
 	}
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (injection location absent from base_request)", res.Verdict)
+	}
+}
+
+// timeout_ms bounds each replay.
+func TestTimingTimeoutBoundsHungArm(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get(timingParam) == valHigh {
+			// Release on client cancel.
+			select {
+			case <-time.After(5 * time.Second):
+			case <-r.Context().Done():
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><p>ok</p></html>`))
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": timingParam},
+			"payloads": map[string]string{
+				"control":    valControl,
+				"delay_low":  valLow,
+				"delay_high": valHigh,
+			},
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"repetitions":         3,
+		"min_median_delta_ms": 3000,
+		"timeout_ms":          250,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-timeout",
+			Type:      "sqli.time_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.time_based")
+	env := validators.Env{Policy: testEnforcer(t, srv), Artifacts: artifacts.NewStore(), Clock: validators.WallClock{}}
+
+	start := time.Now()
+	res, _ := v.Validate(context.Background(), job, env)
+	elapsed := time.Since(start)
+
+	if res.Verdict != verdict.Inconclusive {
+		t.Fatalf("verdict = %q, want inconclusive (hung arm bounded by timeout_ms)", res.Verdict)
+	}
+	// Must be bounded: nowhere near the 5s hang.
+	if elapsed > 3*time.Second {
+		t.Fatalf("timeout_ms did not bound the replay: took %v", elapsed)
 	}
 }

@@ -14,10 +14,9 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// TestReportShapeConsistency verifies that every verdict produces a Report with
-// the required fields set and omitted fields correct for that verdict.
+// Reports keep required shape.
 func TestReportShapeConsistency(t *testing.T) {
-	// Stand up a target for the verified case.
+	// Target for verified case.
 	const marker = "VERIFIED_MARKER"
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.Contains(r.URL.Query().Get("file"), "..") {
@@ -36,9 +35,9 @@ func TestReportShapeConsistency(t *testing.T) {
 		name    string
 		finding string
 		want    verdict.Verdict
-		// requireProof says this verdict must carry a non-empty proof block.
+		// requireProof expects proof.
 		requireProof bool
-		// requireReason says this verdict must carry a non-empty reason code.
+		// requireReason expects reason.
 		requireReason bool
 	}{
 		{
@@ -67,12 +66,10 @@ func TestReportShapeConsistency(t *testing.T) {
     "allowed_ports": [443]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://evil.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://evil.com/x?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`,
 			want:          verdict.Rejected,
 			requireReason: true,
@@ -89,12 +86,10 @@ func TestReportShapeConsistency(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["` + marker + `"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "` + marker + `", "repetitions": 2}
 }`,
 			want:         verdict.Verified,
 			requireProof: true,
@@ -111,12 +106,10 @@ func TestReportShapeConsistency(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["ABSENT_MARKER"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "ABSENT_MARKER", "repetitions": 2}
 }`,
 			want: verdict.NotReproduced,
 		},
@@ -138,22 +131,22 @@ func TestReportShapeConsistency(t *testing.T) {
 				t.Fatalf("verdict = %q, want %q (reason=%q)", report.Verdict, tc.want, report.Reason)
 			}
 
-			// Every report must have DecidedAt stamped.
+			// Every report has DecidedAt.
 			if report.DecidedAt.IsZero() {
 				t.Fatal("DecidedAt not stamped")
 			}
 
-			// Reports with reason-bearing verdicts must have a Reason.
+			// Reason verdicts carry reason.
 			if tc.requireReason && report.Reason == "" {
 				t.Fatal("reason empty for verdict that requires it")
 			}
 
-			// Verified reports must carry a non-empty proof block.
+			// Verified carries proof.
 			if tc.requireProof && len(report.Proof) == 0 {
 				t.Fatal("proof empty for verdict that requires it")
 			}
 
-			// Marshal round-trip: the report must be valid JSON.
+			// Reports marshal as JSON.
 			b, marshalErr := json.Marshal(report)
 			if marshalErr != nil {
 				t.Fatalf("JSON: %v", marshalErr)
@@ -163,7 +156,7 @@ func TestReportShapeConsistency(t *testing.T) {
 				t.Fatalf("report is not valid JSON: %s", b)
 			}
 
-			// Required keys always present.
+			// Required keys.
 			for _, k := range []string{"finding_id", "type", "verdict", "decided_at"} {
 				if _, ok := m[k]; !ok {
 					t.Errorf("missing key %q in report JSON", k)
@@ -173,13 +166,12 @@ func TestReportShapeConsistency(t *testing.T) {
 	}
 }
 
-// TestRedactionAudit checks that no stored artifact or report JSON contains raw
-// credentials (Cookie, Authorization, Set-Cookie, CSRF, bearer values).
+// Redaction strips report and artifact secrets.
 func TestRedactionAudit(t *testing.T) {
 	const marker = "AUDIT_CANARY"
 
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Echo back a "sensitive" response with headers that should be redacted.
+		// Sensitive headers must redact.
 		w.Header().Set("Set-Cookie", "session=topsecret; Path=/")
 		if strings.Contains(r.URL.Query().Get("file"), "..") {
 			_, _ = w.Write([]byte(marker))
@@ -204,12 +196,10 @@ func TestRedactionAudit(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["` + marker + `"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "` + marker + `", "repetitions": 2}
 }`
 
 	e, err := New(Config{Resolver: resolver, Store: store, InternalAssessment: true})
@@ -223,11 +213,11 @@ func TestRedactionAudit(t *testing.T) {
 		t.Fatalf("Verify: %v", err)
 	}
 
-	// Check the report JSON itself.
+	// Check report JSON.
 	reportJSON, _ := json.Marshal(report)
 	assertNoSecrets(t, "report_json", string(reportJSON))
 
-	// Also store some data with sensitive headers and verify it's redacted.
+	// Check stored data.
 	sensitiveData := "Cookie: session=secretvalue\nAuthorization: Bearer eyJtoken\nSet-Cookie: id=val\ncsrf_token=abc123\nX-CSRF-TOKEN=xyz789"
 	ref, err := store.Put(context.Background(), "redact-audit", artifacts.KindHTTPExchange, []byte(sensitiveData))
 	if err != nil {
@@ -240,9 +230,7 @@ func TestRedactionAudit(t *testing.T) {
 	assertNoSecrets(t, "stored_artifact", string(data))
 }
 
-// sensitivePatterns are tokens that must never appear in a stored artifact or
-// report, proving the redaction pipeline covers Cookie, Authorization,
-// Set-Cookie, CSRF, and bearer values.
+// sensitivePatterns must never persist.
 var sensitivePatterns = []string{
 	"secretvalue",
 	"eyJtoken",

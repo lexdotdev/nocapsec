@@ -61,8 +61,7 @@ func booleanEnv(t *testing.T, srv *httptest.Server) validators.Env {
 	}
 }
 
-// Handler simulating a boolean SQLi: true condition returns same as baseline,
-// false condition returns a different page.
+// booleanSQLiHandler models true/false arms.
 func booleanSQLiHandler() http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
@@ -102,8 +101,7 @@ func TestSQLiBooleanVerified(t *testing.T) {
 	}
 }
 
-// All three responses are the same -> true resembles baseline but false does
-// too, so not_reproduced.
+// No false difference is not_reproduced.
 func TestSQLiBooleanNotReproduced(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -126,7 +124,7 @@ func TestSQLiBooleanNotReproduced(t *testing.T) {
 	}
 }
 
-// True condition differs from baseline -> not_reproduced (violates condition 1).
+// True must resemble baseline.
 func TestSQLiBooleanTrueDiffersFromBaseline(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
@@ -159,7 +157,7 @@ func TestSQLiBooleanTrueDiffersFromBaseline(t *testing.T) {
 	}
 }
 
-// Status code difference between baseline and false condition -> verified.
+// Status difference can verify.
 func TestSQLiBooleanStatusCodeDiff(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
@@ -248,7 +246,7 @@ func TestSQLiBooleanInvalidEvidence(t *testing.T) {
 	}
 }
 
-// Dynamic content (UUIDs/timestamps) masked -> still verified.
+// Dynamic content is masked.
 func TestSQLiBooleanDynamicContentMasked(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.URL.Query().Get("id")
@@ -280,9 +278,7 @@ func TestSQLiBooleanDynamicContentMasked(t *testing.T) {
 	}
 }
 
-// Cheat resistance: the engine builds every arm from one base_request, so the
-// declared injection location must exist there. A location absent from
-// base_request is invalid — there is no second request a client could smuggle.
+// Slot must exist in base request.
 func TestSQLiBooleanInjectionLocationAbsent(t *testing.T) {
 	srv := httptest.NewServer(booleanSQLiHandler())
 	defer srv.Close()
@@ -291,7 +287,7 @@ func TestSQLiBooleanInjectionLocationAbsent(t *testing.T) {
 	ps := strconv.Itoa(port)
 	base := "http://app.example.com:" + ps
 
-	// base_request has no "id" query parameter, but the injection names it.
+	// Base request lacks the slot.
 	ev, _ := json.Marshal(map[string]any{
 		"base_request": map[string]string{"method": "GET", "url": base + "/item"},
 		"injection": map[string]any{
@@ -336,11 +332,9 @@ func TestSQLiBooleanInjectionLocationAbsent(t *testing.T) {
 	}
 }
 
-// Compare floor: the engine always compares at least status + body_hash_fuzzy.
-// A client passing compare:["status"] still detects a body-only difference
-// because the floor forces body_hash_fuzzy in.
+// Compare floor includes body hash.
 func TestSQLiBooleanCompareFloor(t *testing.T) {
-	// baseline/true share one body; false differs ONLY in the body, same status.
+	// Only the body differs.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		if r.URL.Query().Get("id") == "1 AND 1=0" {
@@ -366,8 +360,7 @@ func TestSQLiBooleanCompareFloor(t *testing.T) {
 			},
 		},
 	})
-	// Client asks for status alone; the floor still forces body_hash_fuzzy, so
-	// the body-only difference is detected and the proof holds.
+	// Floor still detects body changes.
 	proof, _ := json.Marshal(map[string]any{
 		"expected_true_similarity_to_baseline": true,
 		"expected_false_difference":            true,
@@ -398,5 +391,146 @@ func TestSQLiBooleanCompareFloor(t *testing.T) {
 	}
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (floor forces body_hash_fuzzy)", res.Verdict)
+	}
+}
+
+// Header injection works for SQLi.
+func TestSQLiBooleanHeaderSlotVerified(t *testing.T) {
+	// Header value drives the oracle.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		search := r.Header.Get("X-Search")
+		switch search {
+		case "widget", "widget' OR '1'='1":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<html><title>Product</title><p>Widget A - $19.99</p></html>`))
+		case "widget' OR '1'='2":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`<html><title>No Results</title><p>No products found.</p></html>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]any{
+			"method": "GET",
+			"url":    base + "/search",
+			"headers": []map[string]string{
+				{"name": "X-Search", "value": "widget"},
+			},
+		},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "header", "name": "X-Search"},
+			"payloads": map[string]string{
+				"baseline":        "widget",
+				"true_condition":  "widget' OR '1'='1",
+				"false_condition": "widget' OR '1'='2",
+			},
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_true_similarity_to_baseline": true,
+		"expected_false_difference":            true,
+		"compare":                              []string{"status", "body_hash_fuzzy"},
+		"repetitions":                          2,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-sqli-bool-header",
+			Type:      "sqli.boolean_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "header-nonce",
+	}
+
+	v, ok := validators.Lookup("sqli.boolean_based")
+	if !ok {
+		t.Fatal("validator not registered")
+	}
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified (header slot)", res.Verdict)
+	}
+}
+
+// CR/LF header value is rejected.
+func TestSQLiBooleanHeaderCRLFRejected(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]any{
+			"method": "GET",
+			"url":    base + "/search",
+			"headers": []map[string]string{
+				{"name": "X-Search", "value": "widget"},
+			},
+		},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "header", "name": "X-Search"},
+			"payloads": map[string]string{
+				"baseline":        "widget",
+				"true_condition":  "widget' OR '1'='1\r\nInjected: evil",
+				"false_condition": "widget' OR '1'='2",
+			},
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_true_similarity_to_baseline": true,
+		"expected_false_difference":            true,
+		"compare":                              []string{"status", "body_hash_fuzzy"},
+		"repetitions":                          2,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-sqli-bool-crlf",
+			Type:      "sqli.boolean_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, ok := validators.Lookup("sqli.boolean_based")
+	if !ok {
+		t.Fatal("validator not registered")
+	}
+	env := booleanEnv(t, srv)
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	// CR/LF payload is invalid.
+	if res.Verdict != verdict.Invalid {
+		t.Fatalf("verdict = %q, want invalid (CRLF in header payload)", res.Verdict)
 	}
 }

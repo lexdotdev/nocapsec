@@ -69,7 +69,7 @@ func (xssStored) Validate(ctx context.Context, job Job, env Env) (Result, error)
 		timeout = 10000
 	}
 
-	result, err := env.Browser.Run(ctx, browser.BrowserJob{
+	result, err := runBrowser(ctx, job, env, browser.BrowserJob{
 		Entrypoint:    ev.Trigger,
 		AuthStateID:   job.Finding.Auth.AuthStateID,
 		WaitMode:      "load_or_network_idle",
@@ -102,12 +102,12 @@ type xssStoredEvidence struct {
 	Cleanup       []evidence.Request `json:"cleanup,omitempty"`
 }
 
-// runSetup replays setup; non-empty verdict = fail.
+// runSetup returns failure verdict.
 func runSetup(ctx context.Context, env Env, reqs []evidence.Request) (Result, error) {
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 	for i, req := range reqs {
 		if _, pErr := env.Policy.CheckURL(req.URL, policy.PhaseInitial); pErr != nil {
-			return Result{Verdict: verdict.Rejected}, nil //nolint:nilerr // policy rejection -> rejected verdict, not an operational error
+			return Result{Verdict: verdict.Rejected}, nil //nolint:nilerr // rejected verdict
 		}
 		capture, err := httpx.Replay(ctx, bundle, req)
 		if err != nil {
@@ -126,7 +126,7 @@ func runCleanup(ctx context.Context, env Env, reqs []evidence.Request) {
 	if len(reqs) == 0 {
 		return
 	}
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 	for _, req := range reqs {
 		_, _ = httpx.Replay(ctx, bundle, req)
 	}

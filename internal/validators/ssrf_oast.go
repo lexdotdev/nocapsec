@@ -74,11 +74,11 @@ func allocateSSRFToken(ctx context.Context, env Env) (*oast.OASTToken, verdict.V
 
 // ssrfReplay injects the OAST URL and sends it.
 func ssrfReplay(ctx context.Context, env Env, ev ssrfOASTEvidence, tok *oast.OASTToken) error {
-	req, err := injectOASTURL(ev.Request, ev.InjectionLocation, tok)
+	req, err := injectOASTURL(ev.Request, ev.InjectionLocation, tok, ev.ViaRedirect)
 	if err != nil {
 		return err
 	}
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 	_, err = httpx.Replay(ctx, bundle, req)
 	return err
 }
@@ -125,6 +125,8 @@ type ssrfOASTEvidence struct {
 	Request           evidence.Request  `json:"request"`
 	InjectionLocation InjectionLocation `json:"injection_location"`
 	ExpectedProtocols []string          `json:"expected_protocols,omitempty"`
+	// ViaRedirect: use the 302-redirector arm.
+	ViaRedirect bool `json:"via_redirect,omitempty"`
 }
 
 type ssrfOASTProof struct {
@@ -133,31 +135,55 @@ type ssrfOASTProof struct {
 	RequireSourceNotVerifier bool   `json:"require_source_not_verifier"`
 }
 
-// validSSRFInjectionLocation: json_body/query only.
+// validSSRFInjectionLocation checks slot kind.
 func validSSRFInjectionLocation(loc InjectionLocation) bool {
 	switch loc.Kind {
 	case kindJSONBody:
 		return loc.JSONPointer != ""
-	case kindQuery:
+	case kindQuery, kindHeader:
 		return loc.Name != ""
 	default:
 		return false
 	}
 }
 
-// injectOASTURL plants the OAST URL in the slot.
-func injectOASTURL(req evidence.Request, loc InjectionLocation, tok *oast.OASTToken) (evidence.Request, error) {
+// injectOASTURL plants callback URL.
+func injectOASTURL(req evidence.Request, loc InjectionLocation, tok *oast.OASTToken, viaRedirect bool) (evidence.Request, error) {
+	directURL := tok.URLHTTPS
+	headerURL := tok.URLHTTP
+	if viaRedirect {
+		directURL = tok.URLRedirect
+		headerURL = tok.URLRedirect
+	}
 	switch loc.Kind {
 	case kindJSONBody, kindQuery:
-		return injectValue(req, loc, tok.URLHTTPS)
+		return injectValue(req, loc, directURL)
+	case kindHeader:
+		return injectValue(req, loc, stripScheme(headerURL))
 	default:
 		return evidence.Request{}, fmt.Errorf("unsupported injection kind %q", loc.Kind)
 	}
 }
 
-func injectJSONBody(req evidence.Request, pointer, value string) (evidence.Request, error) {
+// stripScheme drops a leading http(s)://.
+func stripScheme(u string) string {
+	u = strings.TrimPrefix(u, "https://")
+	return strings.TrimPrefix(u, "http://")
+}
+
+// injectJSONOperator plants a JSON fragment.
+func injectJSONOperator(req evidence.Request, pointer, fragment string) (evidence.Request, error) {
+	var val any
+	if err := json.Unmarshal([]byte(fragment), &val); err != nil {
+		return evidence.Request{}, fmt.Errorf("invalid JSON fragment: %w", err)
+	}
+	return injectJSONValue(req, pointer, val)
+}
+
+// injectJSONValue sets value at the pointer.
+func injectJSONValue(req evidence.Request, pointer string, value any) (evidence.Request, error) {
 	if req.Body == "" {
-		return evidence.Request{}, fmt.Errorf("empty body for json_body injection")
+		return evidence.Request{}, fmt.Errorf("empty body for JSON injection")
 	}
 	patched, err := setJSONPointer([]byte(req.Body), pointer, value)
 	if err != nil {
@@ -184,8 +210,8 @@ func injectQuery(req evidence.Request, name, value string) (evidence.Request, er
 	return out, nil
 }
 
-// setJSONPointer sets value at an RFC 6901 pointer.
-func setJSONPointer(doc []byte, pointer string, value string) ([]byte, error) {
+// setJSONPointer sets JSON Pointer value.
+func setJSONPointer(doc []byte, pointer string, value any) ([]byte, error) {
 	if pointer == "" || pointer[0] != '/' {
 		return nil, fmt.Errorf("invalid JSON pointer %q", pointer)
 	}
@@ -219,7 +245,7 @@ func splitPointer(pointer string) []string {
 }
 
 // setPath walks a nested map and sets the leaf.
-func setPath(root any, tokens []string, value string) error {
+func setPath(root any, tokens []string, value any) error {
 	current := root
 	for i, tok := range tokens {
 		m, ok := current.(map[string]any)

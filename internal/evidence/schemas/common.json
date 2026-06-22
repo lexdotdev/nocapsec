@@ -54,9 +54,9 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
-      "description": "One declared slot. kind=query|form needs name; json_body needs json_pointer. The position must already exist in base_request.",
+      "description": "One declared slot. kind=query|form|header|url_token needs name; json_body|json_operator needs json_pointer. json_body sets a string scalar; json_operator sets a parsed JSON fragment (object/array/scalar) so operator-shaped payloads like {\"$ne\":1} can be planted. url_token replaces a {{name}} token already present in base_request.url with the raw payload, so a positional payload such as a path-traversal segment survives encoding. The position must already exist in base_request (header: the named header must be present in base_request.headers; url_token: the {{name}} token must be present in base_request.url).",
       "properties": {
-        "kind": { "enum": ["query", "form", "json_body"] },
+        "kind": { "enum": ["query", "form", "json_body", "json_operator", "header", "url_token"] },
         "name": { "type": "string" },
         "json_pointer": { "type": "string" }
       }

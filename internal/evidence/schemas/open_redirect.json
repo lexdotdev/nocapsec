@@ -1,11 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "open_redirect",
-  "description": "Open redirect proven by a browser starting on the target origin and landing on an external origin, final URL carrying the nonce.",
-  "x-flags": "-browser",
+  "description": "Open redirect proven by a browser starting on the target origin and landing on an engine-owned OAST origin, final URL carrying the nonce.",
+  "x-flags": "-browser -oast",
   "x-notes": [
-    "Put {{nonce}} in the redirect destination inside entrypoint.url so the final URL is provably yours.",
-    "The external final host AND port must be in the target allowlist, or the navigation is rejected.",
+    "Put {{oast_url}} or {{oast_host}} plus {{nonce}} in the redirect destination inside entrypoint.url; the engine fills them per run. Use {{oast_host}} for protocol-relative sinks such as //host/path.",
+    "expected_final_origin is optional compatibility metadata; the validator derives the final origin from its own OAST token.",
     "require_initial_target_origin / require_final_external_origin are usually both true."
   ],
   "type": "object",
@@ -22,12 +22,12 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["entrypoint", "redirect_parameter", "expected_initial_origin", "expected_final_origin"],
+      "required": ["entrypoint", "redirect_parameter", "expected_initial_origin"],
       "properties": {
         "entrypoint": { "$ref": "#/$defs/request" },
         "redirect_parameter": { "type": "string" },
         "expected_initial_origin": { "type": "string" },
-        "expected_final_origin": { "type": "string" },
+        "expected_final_origin": { "type": "string", "description": "Deprecated; the engine derives this from its OAST token." },
         "redirect_kind": { "type": "string", "description": "e.g. server_or_client" },
         "max_hops": { "type": "number" }
       }
@@ -52,17 +52,16 @@
         "expected_origin": "http://127.0.0.1:3000",
         "allowed_hosts": ["127.0.0.1"],
         "allowed_schemes": ["http"],
-        "allowed_ports": [3000, 39099]
+        "allowed_ports": [3000]
       },
       "auth": { "required": false },
       "evidence": {
         "entrypoint": {
           "method": "GET",
-          "url": "http://127.0.0.1:3000/login?next=http%3A%2F%2F127.0.0.1%3A39099%2Fnocapsec-{{nonce}}"
+          "url": "http://127.0.0.1:3000/login?next={{oast_url}}%2Fnocapsec-{{nonce}}"
         },
         "redirect_parameter": "next",
         "expected_initial_origin": "http://127.0.0.1:3000",
-        "expected_final_origin": "http://127.0.0.1:39099",
         "redirect_kind": "server_or_client",
         "max_hops": 5
       },

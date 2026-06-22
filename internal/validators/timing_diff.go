@@ -6,13 +6,14 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"time"
 
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 	"github.com/lexdotdev/nocapsec/internal/httpx"
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// timingEvidence: engine builds arms from one base.
+// timingEvidence builds arms from one base.
 type timingEvidence struct {
 	BaseRequest evidence.Request  `json:"base_request"`
 	Injection   injectionEvidence `json:"injection"`
@@ -33,11 +34,22 @@ func (p timingProof) reps() int {
 	return p.Repetitions
 }
 
+// minTimingDeltaFloorMS is raise-only.
+const minTimingDeltaFloorMS = 3000
+
 func (p timingProof) minDelta() int64 {
-	if p.MinMedianDeltaMS <= 0 {
-		return 3000
+	if p.MinMedianDeltaMS < minTimingDeltaFloorMS {
+		return minTimingDeltaFloorMS
 	}
 	return p.MinMedianDeltaMS
+}
+
+// timeout bounds one replay; 0 = client default.
+func (p timingProof) timeout() time.Duration {
+	if p.TimeoutMS <= 0 {
+		return 0
+	}
+	return time.Duration(p.TimeoutMS) * time.Millisecond
 }
 
 // timingSample is one timed-replay measurement.
@@ -56,10 +68,10 @@ const (
 
 // timingDifferential runs the full timing proof.
 func timingDifferential(ctx context.Context, env Env, ev timingEvidence, proof timingProof) (Result, error) {
-	bundle := httpx.NewTimingClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewTimingClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 
 	reps := proof.reps()
-	samples, err := measureTimingWithClock(ctx, env.Clock, bundle, ev, reps)
+	samples, err := measureTimingWithClock(ctx, env.Clock, bundle, ev, reps, proof.timeout())
 	if err != nil {
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
@@ -67,7 +79,7 @@ func timingDifferential(ctx context.Context, env Env, ev timingEvidence, proof t
 	return analyzeTimingSamples(samples, proof), nil
 }
 
-// labeledReq is one timing arm: label plus request.
+// labeledReq is one timing arm.
 type labeledReq struct {
 	label string
 	req   evidence.Request
@@ -92,7 +104,7 @@ func buildTimingArms(ev timingEvidence) ([]labeledReq, error) {
 }
 
 // measureTimingWithClock times arms, random order.
-func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.ClientBundle, ev timingEvidence, reps int) ([]timingSample, error) {
+func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.ClientBundle, ev timingEvidence, reps int, timeout time.Duration) ([]timingSample, error) {
 	// Build the three arms once, before scheduling.
 	reqs, err := buildTimingArms(ev)
 	if err != nil {
@@ -117,9 +129,16 @@ func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.Clie
 		}
 		lr := reqs[idx]
 
+		reqCtx := ctx
+		cancel := context.CancelFunc(func() {})
+		if timeout > 0 {
+			// per-replay deadline; exceed -> inconclusive
+			reqCtx, cancel = context.WithTimeout(ctx, timeout)
+		}
 		start := clock.Now()
-		capture, err := httpx.Replay(ctx, bundle, lr.req)
+		capture, err := httpx.Replay(reqCtx, bundle, lr.req)
 		elapsed := clock.Since(start)
+		cancel()
 		if err != nil {
 			return samples, err
 		}
@@ -192,7 +211,7 @@ type timingProofBlock struct {
 	Repetitions  int   `json:"repetitions"`
 }
 
-// controlStable: false when latency CV exceeds 0.5.
+// controlStable enforces CV <= 0.5.
 func controlStable(samples []timingSample) bool {
 	if len(samples) < 2 {
 		return true

@@ -1,12 +1,14 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "path_traversal.file_read",
-  "description": "Path traversal / file read proven by a known marker present in the traversal response and absent from a negative control.",
+  "description": "Path traversal / file read proven by engine-owned contrast: the candidate (traversal) and control (benign) arms are built from one base_request slot, and a known file marker must appear in the candidate response while absent from the control.",
   "x-flags": "(http — no extra flag)",
   "x-notes": [
-    "expected_markers: strings unique to the leaked file (e.g. \"root:x:0:0:\" for /etc/passwd). Avoid generic strings.",
-    "negative_control: a legitimate file read on the same endpoint; the marker must be absent there.",
-    "Prefer a planted canary file you can read back over sensitive system files."
+    "The engine builds the candidate and control arms by planting each payloads value into injection.location of base_request; the arms differ only in that one slot. The client never authors two independent requests.",
+    "For a query-string parameter use injection.location.kind=query (name); the param must already exist in base_request.url. For a path-segment traversal (no query parameter) use kind=url_token: place a {{slot}} token in base_request.url where the filename goes and set injection.location.name to that token; the engine substitutes each payload raw so the ../ sequence survives.",
+    "injection.payloads.candidate is the traversal value (e.g. ../../../../etc/passwd); payloads.control is a benign filename on the same endpoint (e.g. welcome.txt).",
+    "proof.expected_marker MUST be a string unique to the leaked file (e.g. \"root:x:0:0:\" for /etc/passwd) that the request never carries — the engine requires it present in the candidate response, absent in the control response, and absent from the candidate request it sends (reflection guard). Avoid generic strings. Prefer a planted canary file you can read back over sensitive system files.",
+    "repetitions defaults to 2; later-rep instability yields inconclusive rather than verified."
   ],
   "type": "object",
   "additionalProperties": false,
@@ -22,21 +24,26 @@
     "evidence": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["request", "vulnerable_parameter", "expected_markers", "negative_control"],
+      "required": ["base_request", "injection"],
       "properties": {
-        "request": { "$ref": "#/$defs/request" },
-        "vulnerable_parameter": { "type": "string" },
-        "expected_markers": { "type": "array", "minItems": 1, "items": { "type": "string" } },
-        "negative_control": { "$ref": "#/$defs/request" }
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["candidate", "control"]
+            }
+          }
+        }
       }
     },
     "proof": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["require_marker", "require_negative_control_absent"],
+      "required": ["expected_marker", "repetitions"],
       "properties": {
-        "require_marker": { "type": "boolean" },
-        "require_negative_control_absent": { "type": "boolean" }
+        "expected_marker": { "type": "string", "minLength": 1 },
+        "repetitions": { "type": "number" }
       }
     }
   },
@@ -52,12 +59,16 @@
       },
       "auth": { "required": false },
       "evidence": {
-        "request": { "method": "GET", "url": "https://app.example.com/download?file=..%2F..%2F..%2Fetc%2Fpasswd" },
-        "vulnerable_parameter": "file",
-        "expected_markers": ["root:x:0:0:"],
-        "negative_control": { "method": "GET", "url": "https://app.example.com/download?file=readme.txt" }
+        "base_request": { "method": "GET", "url": "https://app.example.com/download?file=welcome.txt" },
+        "injection": {
+          "location": { "kind": "query", "name": "file" },
+          "payloads": {
+            "candidate": "../../../../etc/passwd",
+            "control": "welcome.txt"
+          }
+        }
       },
-      "proof": { "require_marker": true, "require_negative_control_absent": true }
+      "proof": { "expected_marker": "root:x:0:0:", "repetitions": 2 }
     }
   ]
 }

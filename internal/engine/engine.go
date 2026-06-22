@@ -1,5 +1,4 @@
-// Package engine runs the verification pipeline
-// on bounded pools.
+// Package engine runs bounded verification.
 package engine
 
 import (
@@ -25,8 +24,7 @@ import (
 // ErrNotImplemented means a Task has no Run func.
 var ErrNotImplemented = errors.New("engine: not implemented")
 
-// Limits caps concurrent jobs per capability
-// per target.
+// Limits caps work per target.
 type Limits struct {
 	HTTPReplay int
 	Timing     int
@@ -34,7 +32,7 @@ type Limits struct {
 	OAST       int
 }
 
-// For returns the per-target limit for cap c.
+// For returns a capability limit.
 func (l Limits) For(c Capability) int {
 	switch c {
 	case CapHTTPReplay:
@@ -54,19 +52,19 @@ func DefaultLimits() Limits {
 	return Limits{HTTPReplay: 5, Timing: 1, Browser: 2, OAST: 8}
 }
 
-// Config holds engine tuning and injected deps.
+// Config wires engine dependencies.
 type Config struct {
 	Limits    Limits
 	Resolver  policy.Resolver
 	Store     artifacts.ArtifactStore
 	AuthStore authstate.Store
-	// Browser runs client-side proofs; nil off.
+	// Browser runs client proofs.
 	Browser browser.BrowserRunner
-	// OAST handles out-of-band callbacks; nil off.
+	// OAST handles callbacks.
 	OAST oast.OAST
-	// InternalAssessment opts into blocked ranges.
+	// InternalAssessment allows blocked ranges.
 	InternalAssessment bool
-	// Logger receives structured events; nil off.
+	// Logger receives events.
 	Logger Logger
 }
 
@@ -96,8 +94,7 @@ func (c Config) withDefaults() Config {
 	return c
 }
 
-// Engine runs the verification pipeline on
-// bounded pools.
+// Engine owns verification pools.
 type Engine struct {
 	dispatcher         Dispatcher
 	jobs               *jobStore
@@ -113,7 +110,7 @@ type Engine struct {
 	closed             atomic.Bool
 }
 
-// New wires dispatcher, pools, job store from cfg.
+// New wires the engine.
 func New(cfg Config) (*Engine, error) {
 	cfg = cfg.withDefaults()
 	return &Engine{
@@ -134,8 +131,7 @@ func New(cfg Config) (*Engine, error) {
 // ErrClosed is returned by Verify after Close.
 var ErrClosed = errors.New("engine: closed")
 
-// Verify runs the pipeline for one finding
-// to a terminal Report.
+// Verify returns a terminal report.
 func (e *Engine) Verify(ctx context.Context, raw []byte) (verdict.Report, error) {
 	if e.closed.Load() {
 		return verdict.Report{}, ErrClosed
@@ -165,7 +161,7 @@ func (e *Engine) Verify(ctx context.Context, raw []byte) (verdict.Report, error)
 		r.Artifacts = artRefs
 		e.metrics.RecordVerdict(r.Verdict)
 		e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(r.Verdict))
-		return r, nil //nolint:nilerr // policy rejection -> Rejected verdict
+		return r, nil //nolint:nilerr // rejected verdict
 	}
 
 	if reason := e.checkAuthIfRequired(ctx, finding); reason != "" {
@@ -185,7 +181,7 @@ func (e *Engine) Verify(ctx context.Context, raw []byte) (verdict.Report, error)
 	return report, nil
 }
 
-// Metrics returns the engine's metrics counters.
+// Metrics returns counters.
 func (e *Engine) Metrics() *Metrics { return e.metrics }
 
 func (e *Engine) invalidReport(err error) verdict.Report {
@@ -274,8 +270,7 @@ func (e *Engine) planAndDispatch(ctx context.Context, finding *evidence.Finding,
 	return report, nil
 }
 
-// checkAuth loads auth state; reason code if
-// missing/expired, else "".
+// checkAuth returns an auth failure reason.
 func (e *Engine) checkAuth(ctx context.Context, authStateID string) string {
 	_, err := e.authStore.Get(ctx, authStateID)
 	if err != nil {
@@ -290,8 +285,7 @@ func (e *Engine) checkAuth(ctx context.Context, authStateID string) string {
 	return ""
 }
 
-// evaluate maps the validator's result
-// to a terminal Report.
+// evaluate maps validation to a report.
 func evaluate(f *evidence.Finding, res validators.Result, err error, now time.Time) verdict.Report {
 	pol := verdict.PolicySummary{
 		SchemeOK:            true,
@@ -322,8 +316,7 @@ func evaluate(f *evidence.Finding, res validators.Result, err error, now time.Ti
 	}
 }
 
-// checkEvidencePolicy: mandatory gate on the
-// finding's request URLs.
+// checkEvidencePolicy gates request URLs.
 func checkEvidencePolicy(f *evidence.Finding, pe validators.PolicyEnforcer) (string, error) {
 	urls := extractURLs(f)
 	for _, u := range urls {
@@ -338,8 +331,7 @@ func checkEvidencePolicy(f *evidence.Finding, pe validators.PolicyEnforcer) (str
 	return "", nil
 }
 
-// extractURLs gathers the finding's request URLs
-// for the gate.
+// extractURLs gathers request URLs.
 func extractURLs(f *evidence.Finding) []string {
 	var urls []string
 	if reqs := evidence.ExtractRequests(f); len(reqs) > 0 {
@@ -349,15 +341,10 @@ func extractURLs(f *evidence.Finding) []string {
 			}
 		}
 	}
-	for _, c := range f.Controls {
-		if c.URL != "" {
-			urls = append(urls, c.URL)
-		}
-	}
 	return urls
 }
 
-// generateRandomHex returns 16 random bytes as hex.
+// generateRandomHex returns 128-bit hex.
 func generateRandomHex() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
@@ -366,12 +353,12 @@ func generateRandomHex() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// Handler returns the HTTP API for this Engine.
+// Handler returns the HTTP API.
 func (e *Engine) Handler() http.Handler {
 	return newServer(e).handler()
 }
 
-// Close stops new work and drains in-flight tasks.
+// Close drains in-flight tasks.
 func (e *Engine) Close() error {
 	e.closed.Store(true)
 	e.logger.Info("engine_close", "status", "draining")

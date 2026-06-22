@@ -1,5 +1,4 @@
-// Package browser drives Chromium via CDP
-// for client-side proof.
+// Package browser drives Chromium proofs.
 package browser
 
 import (
@@ -8,21 +7,19 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 )
 
-// Action is one bounded post-load step.
+// Action is one post-load step.
 type Action struct {
 	Kind string            `json:"kind"`
 	Args map[string]string `json:"args,omitempty"`
 }
 
-// NavEvent is a committed frame nav;
-// origin re-checked.
+// NavEvent is a committed nav.
 type NavEvent struct {
 	Origin string `json:"origin"`
 	URL    string `json:"url"`
 }
 
-// DialogEvent records a JS dialog;
-// hook events never count as proof.
+// DialogEvent records a JS dialog.
 type DialogEvent struct {
 	Type             string `json:"type"`
 	Message          string `json:"message"`
@@ -50,10 +47,10 @@ type BrowserJob struct {
 	WaitMode      string           `json:"wait_mode"`
 	TimeoutMS     int              `json:"timeout_ms"`
 	AcceptSignals []string         `json:"accept_signals,omitempty"`
+	ProxyURL      string           `json:"-"`
 }
 
-// BrowserResult is a job outcome;
-// refs set only on proof.
+// BrowserResult records job output.
 type BrowserResult struct {
 	Navigation     []NavEvent     `json:"navigation,omitempty"`
 	Dialogs        []DialogEvent  `json:"dialogs,omitempty"`

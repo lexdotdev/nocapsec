@@ -66,7 +66,7 @@ func oastPollConfig(env Env, window, defaultWindow time.Duration) oast.PollConfi
 	}
 }
 
-// parseOASTJob unmarshals, validates OAST evidence.
+// parseOASTJob validates OAST evidence.
 func parseOASTJob(job Job, slotKey string) (oastEvidence, oastProof, verdict.Verdict) {
 	var ev oastEvidence
 	if err := json.Unmarshal(job.Finding.Evidence, &ev); err != nil {
@@ -173,7 +173,7 @@ func runOASTValidator(ctx context.Context, job Job, env Env, opts oastOpts) (Res
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
 
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 	if _, err := httpx.Replay(ctx, bundle, injected); err != nil {
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
@@ -186,6 +186,15 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 	oastValue := tok.URLHTTPS
 	if slotKey == "oast_host" {
 		oastValue = tok.Domain
+	}
+
+	// Token mode scans the whole request.
+	// request so the surrounding payload survives.
+	switch strings.TrimSpace(slotTarget) {
+	case "{{oast_url}}":
+		return substituteOASTToken(req, "oast_url", tok.URLHTTPS), nil
+	case "{{oast_host}}":
+		return substituteOASTToken(req, "oast_host", tok.Domain), nil
 	}
 
 	if slotTarget == "xml_external_entity_url" {
@@ -202,7 +211,23 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 	return injectValue(req, InjectionLocation{Kind: kindForm, Name: field}, oastValue)
 }
 
-// injectFormField sets a field in URL-encoded body.
+// substituteOASTToken fills request slots.
+func substituteOASTToken(req evidence.Request, token, val string) evidence.Request {
+	out := req
+	out.URL = replaceSlot(out.URL, token, val)
+	out.Body = replaceSlot(out.Body, token, val)
+	if len(out.Headers) > 0 {
+		hs := make([]evidence.Header, len(out.Headers))
+		copy(hs, out.Headers)
+		for i := range hs {
+			hs[i].Value = replaceSlot(hs[i].Value, token, val)
+		}
+		out.Headers = hs
+	}
+	return out
+}
+
+// injectFormField sets a form field.
 func injectFormField(body, field, value string) (string, error) {
 	if body == "" {
 		return url.Values{field: {value}}.Encode(), nil

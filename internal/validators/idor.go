@@ -1,8 +1,10 @@
 package validators
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	"github.com/lexdotdev/nocapsec/internal/authstate"
@@ -43,14 +45,11 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, nil //nolint:nilerr // auth failure -> inconclusive
 	}
 
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 
-	// 1. Owner creates the canary resource.
 	setupReq := ev.SetupResource
 	setupReq.Body = replaceNonceSlot(setupReq.Body, job.Nonce)
-	for k, v := range ownerCreds.Headers {
-		setupReq.Headers = append(setupReq.Headers, evidence.Header{Name: k, Value: v})
-	}
+	injectCredHeaders(&setupReq, ownerCreds)
 
 	setupCap, err := httpx.Replay(ctx, bundle, setupReq)
 	if err != nil {
@@ -60,13 +59,14 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// 2. Attacker reads the owner's resource.
 	attackReq := ev.AttackRequest
-	resourceID := extractResourceID(setupCap.RespBody)
-	attackReq.URL = replaceResourceIDSlot(attackReq.URL, resourceID)
-	for k, v := range attackerCreds.Headers {
-		attackReq.Headers = append(attackReq.Headers, evidence.Header{Name: k, Value: v})
+	resourceID := extractResourceID(setupCap.RespBody, ev.CreatedIDPointer)
+	if ev.CreatedIDPointer != "" && resourceID == "" {
+		// Unresolved pointer is author error.
+		return Result{Verdict: verdict.Inconclusive}, nil
 	}
+	attackReq.URL = replaceResourceIDSlot(attackReq.URL, resourceID)
+	injectCredHeaders(&attackReq, attackerCreds)
 
 	attackCap, err := httpx.Replay(ctx, bundle, attackReq)
 	if err != nil {
@@ -108,11 +108,20 @@ type idorReadEvidence struct {
 	AttackerAuthStateID string           `json:"attacker_auth_state_id"`
 	SetupResource       evidence.Request `json:"setup_resource"`
 	AttackRequest       evidence.Request `json:"attack_request"`
+	// CreatedIDPointer locates the id.
+	CreatedIDPointer string `json:"created_id_pointer,omitempty"`
 }
 
 type idorReadProof struct {
 	ExpectedMarker      string `json:"expected_marker"`
 	RequireOwnerControl bool   `json:"require_owner_control"`
+}
+
+// injectCredHeaders appends auth headers.
+func injectCredHeaders(req *evidence.Request, creds *authstate.Credentials) {
+	for k, v := range creds.Headers {
+		req.Headers = append(req.Headers, evidence.Header{Name: k, Value: v})
+	}
 }
 
 // loadCreds checks auth-state expiry then creds.
@@ -123,15 +132,18 @@ func loadCreds(ctx context.Context, store authstate.Store, id string) (*authstat
 	return store.GetCredentials(ctx, id)
 }
 
-// replaceResourceIDSlot fills the resource-id slot.
-func replaceResourceIDSlot(s, id string) string {
-	s = strings.ReplaceAll(s, "{{created_resource_id}}", id)
-	s = strings.ReplaceAll(s, "%7B%7Bcreated_resource_id%7D%7D", id)
-	return strings.ReplaceAll(s, "%7b%7bcreated_resource_id%7d%7d", id)
-}
+// replaceResourceIDSlot fills resource slot.
+func replaceResourceIDSlot(s, id string) string { return replaceSlot(s, "created_resource_id", id) }
 
-// extractResourceID pulls a resource ID from body.
-func extractResourceID(body []byte) string {
+// extractResourceID reads created id.
+func extractResourceID(body []byte, pointer string) string {
+	if pointer != "" {
+		if id := extractResourceIDAt(body, pointer); id != "" {
+			return id
+		}
+		// unresolved pointer: never match the whole body.
+		return ""
+	}
 	var obj map[string]json.RawMessage
 	if json.Unmarshal(body, &obj) == nil {
 		for _, key := range []string{"id", "ID", "resource_id", "resourceId"} {
@@ -150,6 +162,46 @@ func extractResourceID(body []byte) string {
 		}
 	}
 	return strings.TrimSpace(string(body))
+}
+
+// extractResourceIDAt reads pointer scalar.
+func extractResourceIDAt(body []byte, pointer string) string {
+	if pointer[0] != '/' {
+		return ""
+	}
+	dec := json.NewDecoder(bytes.NewReader(body))
+	dec.UseNumber()
+	var root any
+	if dec.Decode(&root) != nil {
+		return ""
+	}
+	cur := root
+	for _, tok := range splitPointer(pointer) {
+		switch node := cur.(type) {
+		case map[string]any:
+			v, ok := node[tok]
+			if !ok {
+				return ""
+			}
+			cur = v
+		case []any:
+			i, err := strconv.Atoi(tok)
+			if err != nil || i < 0 || i >= len(node) {
+				return ""
+			}
+			cur = node[i]
+		default:
+			return ""
+		}
+	}
+	switch v := cur.(type) {
+	case string:
+		return v
+	case json.Number:
+		return v.String()
+	default:
+		return ""
+	}
 }
 
 func init() { Register(idorRead{}) }

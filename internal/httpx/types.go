@@ -1,12 +1,11 @@
-// Package httpx replays requests via an
-// IP-pinning transport (SSRF defense).
+// Package httpx replays through pinned IPs.
 package httpx
 
 import (
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 )
 
-// RedirectHop is one step + its policy verdict.
+// RedirectHop is one checked hop.
 type RedirectHop struct {
 	From       string
 	To         string
@@ -14,8 +13,7 @@ type RedirectHop struct {
 	Allowed    bool // policy verdict
 }
 
-// Capture holds a replay: response, timing,
-// redirects.
+// Capture records replay output.
 type Capture struct {
 	Request     evidence.Request
 	StatusCode  int

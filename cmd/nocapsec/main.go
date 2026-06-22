@@ -56,8 +56,6 @@ func usage() {
 	fmt.Fprintln(os.Stderr, "  version          print version and build info")
 }
 
-// printVersion reports the release tag plus the commit, build time, and
-// dirty-tree flag Go stamps into the binary from VCS metadata.
 func printVersion() {
 	commit, built, modified := "unknown", "unknown", false
 	if info, ok := debug.ReadBuildInfo(); ok {
@@ -172,6 +170,10 @@ func newEngine(cfg config.Config, w wiring, logger engine.Logger) (*nocapsec.Eng
 	var recv *oast.Receiver
 	if w.oast {
 		recv = oast.NewReceiver(w.oastDomain, w.oastAdvertiseHost)
+		// callback host the target can reach.
+		if w.oastAdvertiseHost != "" {
+			recv.SetCallbackHost(w.oastAdvertiseHost)
+		}
 		if err := recv.Start(w.oastHTTPAddr, w.oastDNSAddr); err != nil {
 			return nil, nil, fmt.Errorf("start oast receiver: %w", err)
 		}
@@ -311,7 +313,7 @@ func verify(args []string) {
 	}
 	filePath := fs.Args()[0]
 
-	finding, err := os.ReadFile(filePath) //nolint:gosec // CLI tool reads user-specified file
+	finding, err := os.ReadFile(filePath) //nolint:gosec // CLI reads path
 	if err != nil {
 		log.Fatalf("nocapsec verify: %v", err)
 	}

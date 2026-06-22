@@ -21,7 +21,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// fakeResolver returns a fixed IP for every lookup.
+// fakeResolver avoids live DNS.
 type fakeResolver struct {
 	ips []net.IP
 	err error
@@ -34,7 +34,7 @@ func (f fakeResolver) Resolve(_ context.Context, _ string) ([]net.IP, error) {
 	return f.ips, nil
 }
 
-// publicResolver resolves to a public IP so policy doesn't block it.
+// publicResolver returns a public IP.
 func publicResolver() policy.Resolver {
 	return fakeResolver{ips: []net.IP{net.ParseIP("93.184.216.34")}}
 }
@@ -71,7 +71,7 @@ func TestDispatchUnknownCapability(t *testing.T) {
 	}
 }
 
-// A finding with no Run wired surfaces ErrNotImplemented.
+// Nil Run surfaces ErrNotImplemented.
 func TestDispatchNilRunIsNotImplemented(t *testing.T) {
 	d := newDispatcher(DefaultLimits())
 	defer func() { _ = d.Close() }()
@@ -218,7 +218,7 @@ func TestEngineVerifyPolicyRejected(t *testing.T) {
 	}
 	defer func() { _ = e.Close() }()
 
-	// Evidence URL points at evil.com but target only allows app.example.com.
+	// Evidence URL is out of scope.
 	finding := `{
   "finding_id": "rej-1",
   "type": "path_traversal.file_read",
@@ -229,12 +229,10 @@ func TestEngineVerifyPolicyRejected(t *testing.T) {
     "allowed_ports": [443]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "https://evil.com/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "https://evil.com/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`
 	report, err := e.Verify(context.Background(), []byte(finding))
 	if err != nil {
@@ -272,10 +270,9 @@ func TestHandlerPostVerifyInvalid(t *testing.T) {
 	}
 }
 
-// POST /verify with valid finding -> 202 accepted with job_id;
-// the background pipeline runs against a local httptest server.
+// POST /verify accepts valid jobs.
 func TestHandlerPostVerifyAccepted(t *testing.T) {
-	// Stand up a target so the background pipeline completes.
+	// Target lets the pipeline finish.
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	}))
@@ -295,12 +292,10 @@ func TestHandlerPostVerifyAccepted(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`
 
 	e, err := New(Config{Resolver: resolver, InternalAssessment: true})
@@ -329,7 +324,7 @@ func TestHandlerPostVerifyAccepted(t *testing.T) {
 		t.Fatalf("status = %q, want accepted", body["status"])
 	}
 
-	// Wait for the background pipeline to settle.
+	// Wait for background completion.
 	jobID := body["job_id"]
 	deadline := time.After(3 * time.Second)
 	for {
@@ -348,7 +343,7 @@ func TestHandlerPostVerifyAccepted(t *testing.T) {
 	_ = e.Close()
 }
 
-// GET /verify/unknown -> 404.
+// Unknown job returns 404.
 func TestHandlerGetVerifyNotFound(t *testing.T) {
 	e, err := New(Config{Resolver: publicResolver()})
 	if err != nil {
@@ -369,7 +364,7 @@ func TestHandlerGetVerifyNotFound(t *testing.T) {
 	}
 }
 
-// GET /verify/{id}/artifacts for unknown job -> 404.
+// Unknown artifact job returns 404.
 func TestHandlerGetArtifactsNotFound(t *testing.T) {
 	e, err := New(Config{Resolver: publicResolver()})
 	if err != nil {
@@ -390,7 +385,7 @@ func TestHandlerGetArtifactsNotFound(t *testing.T) {
 	}
 }
 
-// Full pipeline: path traversal verified (marker in candidate, absent in control).
+// Candidate-only marker verifies traversal.
 func TestEngineVerifyPathTraversalVerified(t *testing.T) {
 	const marker = "CANARY_MARKER_FILE"
 
@@ -420,12 +415,10 @@ func TestEngineVerifyPathTraversalVerified(t *testing.T) {
   },
   "auth": {"required": false},
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["` + marker + `"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "` + marker + `", "repetitions": 2}
 }`
 
 	e, err := New(Config{Resolver: resolver, InternalAssessment: true})
@@ -446,7 +439,7 @@ func TestEngineVerifyPathTraversalVerified(t *testing.T) {
 	}
 }
 
-// Full pipeline: path traversal not_reproduced (marker absent from candidate).
+// Missing marker is not_reproduced.
 func TestEngineVerifyPathTraversalNotReproduced(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -468,12 +461,10 @@ func TestEngineVerifyPathTraversalNotReproduced(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["CANARY_ABSENT"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "CANARY_ABSENT", "repetitions": 2}
 }`
 
 	e, err := New(Config{Resolver: resolver, InternalAssessment: true})
@@ -491,7 +482,7 @@ func TestEngineVerifyPathTraversalNotReproduced(t *testing.T) {
 	}
 }
 
-// serverAddr extracts IP and port from an httptest server.
+// serverAddr returns server IP and port.
 func serverAddr(t *testing.T, srv *httptest.Server) (net.IP, int) {
 	t.Helper()
 	host, portStr, err := net.SplitHostPort(srv.Listener.Addr().String())
@@ -509,7 +500,7 @@ func serverAddr(t *testing.T, srv *httptest.Server) (net.IP, int) {
 	return ip, port
 }
 
-// Ensure DecidedAt is stamped for all verdict types.
+// DecidedAt is always stamped.
 func TestEngineVerifyStampsDecidedAt(t *testing.T) {
 	e, err := New(Config{Resolver: publicResolver()})
 	if err != nil {
@@ -538,7 +529,7 @@ func TestValidatorCapMatchesPool(t *testing.T) {
 	}
 }
 
-// Every job persists redacted evidence, policy snapshot, and HTTP exchange.
+// Jobs persist core artifacts.
 func TestEngineVerifyPersistsRedactedArtifacts(t *testing.T) {
 	const marker = "CANARY_FILE_CONTENT"
 
@@ -566,12 +557,10 @@ func TestEngineVerifyPersistsRedactedArtifacts(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["` + marker + `"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "` + marker + `", "repetitions": 2}
 }`
 
 	e, err := New(Config{Resolver: resolver, Store: store, InternalAssessment: true})
@@ -585,7 +574,7 @@ func TestEngineVerifyPersistsRedactedArtifacts(t *testing.T) {
 		t.Fatalf("Verify: %v", err)
 	}
 
-	// Must have all three artifact refs.
+	// Core artifact refs.
 	for _, key := range []string{"evidence", "policy", "http_exchange"} {
 		ref, ok := report.Artifacts[key]
 		if !ok {
@@ -600,8 +589,7 @@ func TestEngineVerifyPersistsRedactedArtifacts(t *testing.T) {
 		}
 	}
 
-	// Verify redaction works end-to-end: put data with a Cookie header
-	// through the store and confirm the credential is stripped.
+	// Redaction works through the store.
 	ref, err := store.Put(context.Background(), "redact-test", artifacts.KindHTTPExchange,
 		[]byte("Cookie: session=secret\nContent-Type: text/html"))
 	if err != nil {
@@ -616,7 +604,7 @@ func TestEngineVerifyPersistsRedactedArtifacts(t *testing.T) {
 	}
 }
 
-// Expired auth state -> inconclusive, not false negative.
+// Expired auth is inconclusive.
 func TestEngineVerifyExpiredAuthYieldsInconclusive(t *testing.T) {
 	key := make([]byte, 32)
 	for i := range key {
@@ -627,7 +615,7 @@ func TestEngineVerifyExpiredAuthYieldsInconclusive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewStore: %v", err)
 	}
-	// Store an already-expired auth state.
+	// Already-expired auth state.
 	state := &authstate.AuthState{
 		ID:             "as-expired",
 		AllowedOrigins: []string{"https://app.example.com"},
@@ -647,12 +635,10 @@ func TestEngineVerifyExpiredAuthYieldsInconclusive(t *testing.T) {
   },
   "auth": {"required": true, "auth_state_id": "as-expired"},
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://app.example.com/x?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`
 
 	e, err := New(Config{
@@ -697,12 +683,10 @@ func TestEngineVerifyMissingAuthYieldsInconclusive(t *testing.T) {
   },
   "auth": {"required": true, "auth_state_id": "nonexistent"},
   "evidence": {
-    "request": {"method": "GET", "url": "https://app.example.com/x"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["M"],
-    "negative_control": {"method": "GET", "url": "https://app.example.com/y"}
+    "base_request": {"method": "GET", "url": "https://app.example.com/x?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "M", "repetitions": 2}
 }`
 
 	e, err := New(Config{
@@ -726,7 +710,7 @@ func TestEngineVerifyMissingAuthYieldsInconclusive(t *testing.T) {
 	}
 }
 
-// fixedClock implements both validators.Clock and authstate.Clock.
+// fixedClock satisfies both clocks.
 type fixedClock struct{ now time.Time }
 
 func (c *fixedClock) Now() time.Time                  { return c.now }

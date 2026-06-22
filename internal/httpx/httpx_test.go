@@ -14,7 +14,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/policy"
 )
 
-// fakeResolver returns a fixed IP set. Tests inject the httptest server's IP.
+// fakeResolver avoids live DNS.
 type fakeResolver struct {
 	ips []net.IP
 	err error
@@ -27,7 +27,7 @@ func (f fakeResolver) Resolve(_ context.Context, _ string) ([]net.IP, error) {
 	return f.ips, nil
 }
 
-// serverAddr extracts IP and port from an httptest server.
+// serverAddr returns server IP and port.
 func serverAddr(t *testing.T, srv *httptest.Server) (net.IP, int) {
 	t.Helper()
 	host, portStr, err := net.SplitHostPort(srv.Listener.Addr().String())
@@ -45,7 +45,7 @@ func serverAddr(t *testing.T, srv *httptest.Server) (net.IP, int) {
 	return ip, port
 }
 
-// testChecker builds a policy.Checker scoped to the given server.
+// testChecker scopes policy to srv.
 func testChecker(t *testing.T, srv *httptest.Server, extraHosts ...string) *policy.Checker {
 	t.Helper()
 	ip, port := serverAddr(t, srv)
@@ -62,8 +62,7 @@ func testChecker(t *testing.T, srv *httptest.Server, extraHosts ...string) *poli
 	return policy.NewChecker(p, fakeResolver{ips: []net.IP{ip}})
 }
 
-// TestReplayCapture proves: replay through the enforcer's client against a
-// local httptest server captures bytes/status/timing.
+// Replay captures status, body, and timing.
 func TestReplayCapture(t *testing.T) {
 	const body = "hello from httptest"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -110,8 +109,7 @@ func TestReplayCapture(t *testing.T) {
 	}
 }
 
-// TestPinnedDialerRejectsNonPinnedIP proves: the dialer hard-fails when
-// the resolved IP is blocked by policy.
+// Blocked resolved IP fails before dialing.
 func TestPinnedDialerRejectsNonPinnedIP(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -120,7 +118,7 @@ func TestPinnedDialerRejectsNonPinnedIP(t *testing.T) {
 
 	_, port := serverAddr(t, srv)
 
-	// Resolver returns a private IP that policy blocks.
+	// Resolver returns a blocked private IP.
 	resolver := fakeResolver{ips: []net.IP{net.ParseIP("10.0.0.1")}}
 	p := policy.URLPolicy{
 		AllowedSchemes:  []string{"http"},
@@ -142,14 +140,13 @@ func TestPinnedDialerRejectsNonPinnedIP(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for blocked IP, got nil")
 	}
-	// The initial CheckURL in Replay should reject the blocked IP.
+	// Replay rejects during initial CheckURL.
 	if !strings.Contains(err.Error(), "blocked_ip") {
 		t.Fatalf("expected blocked_ip rejection, got: %v", err)
 	}
 }
 
-// TestRedirectOutOfScopeRejected proves: a 3xx to an out-of-scope host yields
-// a policy rejection and is never followed.
+// Out-of-scope redirects are rejected.
 func TestRedirectOutOfScopeRejected(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/redir" {
@@ -190,8 +187,7 @@ func TestRedirectOutOfScopeRejected(t *testing.T) {
 	}
 }
 
-// TestReplayFollowsInScopeRedirect proves in-scope redirects are followed
-// and the redirect trace is captured.
+// In-scope redirects are captured.
 func TestReplayFollowsInScopeRedirect(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -233,8 +229,7 @@ func TestReplayFollowsInScopeRedirect(t *testing.T) {
 	}
 }
 
-// TestTimingClientDisablesHTTP2 verifies the timing client builds without error
-// and captures a response (HTTP/2 mux disabled).
+// Timing client captures without HTTP/2.
 func TestTimingClientDisablesHTTP2(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)

@@ -1,5 +1,4 @@
-// Package policy is the mandatory security gate
-// for every outbound URL.
+// Package policy gates every outbound URL.
 package policy
 
 import (
@@ -36,7 +35,7 @@ const (
 	schemeHTTPS = "https"
 )
 
-// Stable rejection reason codes, used in reports.
+// Stable rejection reason codes.
 const (
 	ReasonControlChar     = "control_char"
 	ReasonUnparseable     = "unparseable"
@@ -51,8 +50,7 @@ const (
 	ReasonTooManyRedirect = "too_many_redirects"
 )
 
-// RejectionError reports a violation;
-// Reason is a stable code.
+// RejectionError carries a stable reason.
 type RejectionError struct {
 	Reason string
 	Raw    string
@@ -72,15 +70,14 @@ func reject(reason, raw string, err error) *RejectionError {
 	return &RejectionError{Reason: reason, Raw: raw, Err: err}
 }
 
-// Origin is a normalized scheme/host/port;
-// port always explicit.
+// Origin is scheme, host, explicit port.
 type Origin struct {
 	Scheme string
 	Host   string
 	Port   int
 }
 
-// Equal reports origin equality after normalizing.
+// Equal compares structural origins.
 func (o Origin) Equal(other Origin) bool {
 	return o.Scheme == other.Scheme && o.Host == other.Host && o.Port == other.Port
 }
@@ -100,6 +97,9 @@ type URLPolicy struct {
 	AllowRedirects bool
 	MaxRedirects   int
 
+	AllowExternalFinal   bool
+	ExternalFinalOrigins []Origin
+
 	BlockPrivateIPs    bool
 	BlockLoopback      bool
 	BlockLinkLocal     bool
@@ -111,8 +111,7 @@ type URLPolicy struct {
 	InternalAssessment bool
 }
 
-// SafeURL passed policy; carries pinned IPs
-// for the dialer.
+// SafeURL carries pinned IPs.
 type SafeURL struct {
 	URL      *url.URL
 	Origin   Origin
@@ -129,6 +128,6 @@ type Checker struct {
 	Policy   URLPolicy
 	Resolver Resolver
 
-	// redirects counts hops in the current chain.
+	// redirect hops in this chain
 	redirects int
 }

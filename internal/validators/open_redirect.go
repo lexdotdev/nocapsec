@@ -9,6 +9,7 @@ import (
 
 	"github.com/lexdotdev/nocapsec/internal/browser"
 	"github.com/lexdotdev/nocapsec/internal/evidence"
+	"github.com/lexdotdev/nocapsec/internal/oast"
 	"github.com/lexdotdev/nocapsec/internal/policy"
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
@@ -21,35 +22,46 @@ func (openRedirect) Cap() Capability { return CapBrowser }
 func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, error) {
 	var ev redirectEvidence
 	if err := json.Unmarshal(job.Finding.Evidence, &ev); err != nil {
-		return Result{Verdict: verdict.Invalid}, nil //nolint:nilerr // schema mismatch
+		return Result{Verdict: verdict.Invalid}, nil
 	}
 	var pf redirectProof
 	if err := json.Unmarshal(job.Finding.Proof, &pf); err != nil {
-		return Result{Verdict: verdict.Invalid}, nil //nolint:nilerr // schema mismatch
+		return Result{Verdict: verdict.Invalid}, nil
 	}
 
 	targetOrigin, ok := policy.ParseOrigin(ev.ExpectedInitialOrigin)
 	if !ok {
 		return Result{Verdict: verdict.Invalid}, nil
 	}
-	externalOrigin, ok := policy.ParseOrigin(ev.ExpectedFinalOrigin)
-	if !ok {
+	if rejectScheme(ev.Entrypoint.URL) {
+		return Result{Verdict: verdict.Rejected}, nil
+	}
+	if env.OAST == nil {
+		return Result{Verdict: verdict.Inconclusive}, nil
+	}
+	if !hasOpenRedirectOASTSlot(ev.Entrypoint.URL) {
 		return Result{Verdict: verdict.Invalid}, nil
+	}
+
+	tok, err := env.OAST.NewInteraction(ctx, "open_redirect")
+	if err != nil {
+		return Result{Verdict: verdict.Inconclusive}, nil
+	}
+	defer env.OAST.Close(ctx, tok.CorrelationID) //nolint:errcheck // best-effort
+
+	externalOrigin, ok := originFromRawURL(tok.URLHTTP)
+	if !ok {
+		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 	if env.Browser == nil {
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 
-	// Inject per-run nonce so the final URL carries it.
-	ev.Entrypoint.URL = replaceNonceSlot(ev.Entrypoint.URL, job.Nonce)
-
-	if rejectScheme(ev.Entrypoint.URL) {
-		return Result{Verdict: verdict.Rejected}, nil
-	}
+	ev.Entrypoint.URL = injectOpenRedirectSlots(ev.Entrypoint.URL, tok, job.Nonce)
 
 	safe, err := env.Policy.CheckURL(ev.Entrypoint.URL, policy.PhaseBrowserNav)
 	if err != nil {
-		return Result{Verdict: verdict.Rejected}, nil //nolint:nilerr // policy gate
+		return Result{Verdict: verdict.Rejected}, nil
 	}
 
 	// Initial origin must be the target.
@@ -67,7 +79,10 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 		maxHops = 5
 	}
 
-	result, err := env.Browser.Run(ctx, browser.BrowserJob{
+	proxyJob := job
+	proxyJob.BrowserAllowedOrigins = append(proxyJob.BrowserAllowedOrigins, externalOrigin)
+
+	result, err := runBrowser(ctx, proxyJob, env, browser.BrowserJob{
 		Entrypoint:  ev.Entrypoint,
 		AuthStateID: job.Finding.Auth.AuthStateID,
 		WaitMode:    "load_or_network_idle",
@@ -78,6 +93,24 @@ func (openRedirect) Validate(ctx context.Context, job Job, env Env) (Result, err
 	}
 
 	return evaluateRedirect(result, targetOrigin, externalOrigin, job.Nonce, maxHops), nil
+}
+
+func injectOpenRedirectSlots(raw string, tok *oast.OASTToken, nonce string) string {
+	raw = replaceSlot(raw, "oast_url", tok.URLHTTP)
+	raw = replaceSlot(raw, "oast_host", oastHost(tok))
+	return replaceNonceSlot(raw, nonce)
+}
+
+func hasOpenRedirectOASTSlot(raw string) bool {
+	return hasSlot(raw, "oast_url") || hasSlot(raw, "oast_host")
+}
+
+func oastHost(tok *oast.OASTToken) string {
+	u, err := url.Parse(tok.URLHTTP)
+	if err != nil {
+		return tok.Domain
+	}
+	return u.Host
 }
 
 // evaluateRedirect applies the proof rule.
@@ -165,7 +198,7 @@ func startsAtTarget(r browser.BrowserResult, target policy.Origin) bool {
 	return ok && o.Equal(target)
 }
 
-// hasOriginTransition: target->external in maxHops.
+// hasOriginTransition checks target->external.
 func hasOriginTransition(navs []browser.NavEvent, target, external policy.Origin, maxHops int) bool {
 	seenTarget := false
 	for i, n := range navs {

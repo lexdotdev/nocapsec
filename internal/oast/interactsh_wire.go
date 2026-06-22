@@ -26,20 +26,18 @@ type interactshInteraction struct {
 	RawRequest    string `json:"raw-request"`
 	RemoteAddress string `json:"remote-address"`
 	Timestamp     string `json:"timestamp"`
-	// HTTP-specific fields
-	HTTPRequest string `json:"http-request,omitempty"`
-	// SMTP-specific fields
-	SMTPFrom string `json:"smtp-from,omitempty"`
+	HTTPRequest   string `json:"http-request,omitempty"`
+	SMTPFrom      string `json:"smtp-from,omitempty"`
 }
 
-// normalizeProtocol lowercases protocol name.
+// normalizeProtocol lowercases names.
 func normalizeProtocol(raw string) string {
 	return strings.ToLower(raw)
 }
 
-// extractUserAgent parses the User-Agent header.
+// extractUserAgent reads User-Agent.
 func extractUserAgent(e interactshInteraction) string {
-	// Interactsh embeds the HTTP request.
+	// Prefer embedded HTTP request.
 	raw := e.HTTPRequest
 	if raw == "" {
 		raw = e.RawRequest
@@ -52,7 +50,7 @@ func extractUserAgent(e interactshInteraction) string {
 	return ""
 }
 
-// parseInteractshTime parses a wire timestamp.
+// parseInteractshTime parses wire time.
 func parseInteractshTime(s string) time.Time {
 	for _, layout := range []string{
 		time.RFC3339Nano,

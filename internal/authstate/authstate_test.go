@@ -9,13 +9,50 @@ import (
 	"time"
 )
 
-// testKey returns a valid 32-byte AES-256 key for tests.
+// testKey returns an AES-256 key.
 func testKey() []byte {
 	key := make([]byte, 32)
 	if _, err := rand.Read(key); err != nil {
 		panic(err)
 	}
 	return key
+}
+
+func TestEncryptedStoreCopiesState(t *testing.T) {
+	store, err := NewStore(testKey(), nil)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	state := &AuthState{
+		ID:             "as-copy",
+		AllowedOrigins: []string{"https://app.example.com"},
+		Contains:       []string{"cookies"},
+	}
+	if err := store.Put(context.Background(), state, &Credentials{}); err != nil {
+		t.Fatalf("Put: %v", err)
+	}
+
+	state.AllowedOrigins[0] = "https://evil.example.com"
+	state.Contains[0] = "headers"
+
+	got, err := store.Get(context.Background(), "as-copy")
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	got.AllowedOrigins[0] = "https://mutated.example.com"
+	got.Contains[0] = "localStorage"
+
+	again, err := store.Get(context.Background(), "as-copy")
+	if err != nil {
+		t.Fatalf("Get again: %v", err)
+	}
+	if again.AllowedOrigins[0] != "https://app.example.com" {
+		t.Fatalf("AllowedOrigins aliased: %v", again.AllowedOrigins)
+	}
+	if again.Contains[0] != "cookies" {
+		t.Fatalf("Contains aliased: %v", again.Contains)
+	}
 }
 
 type fakeClock struct{ now time.Time }

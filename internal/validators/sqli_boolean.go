@@ -41,7 +41,7 @@ func (sqliBoolean) Validate(ctx context.Context, job Job, env Env) (Result, erro
 		reps = 2
 	}
 
-	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
+	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 
 	var baselineRedirects []string
 	// Repeat to check stability.
@@ -95,7 +95,7 @@ type booleanArms struct {
 	falseCond evidence.Request
 }
 
-// buildBooleanArms plants each payload in the slot.
+// buildBooleanArms plants payloads.
 func buildBooleanArms(ev sqliBooleanEvidence) (booleanArms, bool) {
 	loc := ev.Injection.Location
 	baseVal, ok1 := ev.Injection.Payloads["baseline"]

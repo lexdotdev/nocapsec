@@ -1,0 +1,29 @@
+{
+  "finding_id": "GHSA-qmm9-x5gr-4gfm",
+  "type": "open_redirect",
+  "target": {
+    "expected_origin": "http://127.0.0.1:3100",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [3100]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "entrypoint": {
+      "method": "GET",
+      "url": "http://127.0.0.1:3100//{{oast_host}}/nocapsec-{{nonce}}"
+    },
+    "redirect_parameter": "path",
+    "expected_initial_origin": "http://127.0.0.1:3100",
+    "redirect_kind": "server_or_client",
+    "max_hops": 5
+  },
+  "proof": {
+    "expected_signal": "browser_final_url_or_oast_http",
+    "require_initial_target_origin": true,
+    "require_final_external_origin": true,
+    "timeout_ms": 8000
+  }
+}

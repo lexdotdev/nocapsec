@@ -1,4 +1,4 @@
-// Package evidence: canonical, validated Findings.
+// Package evidence validates findings.
 package evidence
 
 import (
@@ -6,16 +6,16 @@ import (
 	"errors"
 )
 
-// ErrInvalid marks malformed/insufficient evidence.
+// ErrInvalid marks bad evidence.
 var ErrInvalid = errors.New("evidence: invalid finding")
 
-// Header is a single request/response header.
+// Header is one HTTP header.
 type Header struct {
 	Name  string `json:"name"`
 	Value string `json:"value"`
 }
 
-// Request: replayed verbatim except slots.
+// Request is replayed except slots.
 // Body is raw wire, not base64.
 type Request struct {
 	Method  string   `json:"method"`
@@ -24,7 +24,7 @@ type Request struct {
 	Body    string   `json:"body,omitempty"`
 }
 
-// Target: origin + allowlists bounding a finding.
+// Target bounds a finding.
 type Target struct {
 	ExpectedOrigin string   `json:"expected_origin"`
 	AllowedHosts   []string `json:"allowed_hosts"`
@@ -40,12 +40,10 @@ type AuthRef struct {
 	Role        string `json:"role,omitempty"`
 }
 
-// MutationSlots: slot -> only position
-// the verifier may write.
+// MutationSlots maps slot to position.
 type MutationSlots map[string]string
 
-// SideEffects declares cleanup for a finding
-// that changes state.
+// SideEffects declares cleanup.
 type SideEffects struct {
 	Cleanup []Request `json:"cleanup,omitempty"`
 }

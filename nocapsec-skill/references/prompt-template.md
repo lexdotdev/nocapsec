@@ -52,6 +52,10 @@ chosen type's evidence/proof schema and example before writing JSON.
 | Blind XSS (out-of-band execution)                  | `xss.blind` | `nocapsec doc xss.blind` |
 | Blind SQLi via timing                              | `sqli.time_based` | `nocapsec doc sqli.time_based` |
 | Blind SQLi via true/false behavior                 | `sqli.boolean_based` | `nocapsec doc sqli.boolean_based` |
+| In-band / UNION SQLi (read channel)                | `sqli.inband` | `nocapsec doc sqli.inband` |
+| In-band SQLi reading a named table                 | `sqli.union_extract` | `nocapsec doc sqli.union_extract` |
+| NoSQL operator-injection auth bypass               | `nosqli.auth_bypass` | `nocapsec doc nosqli.auth_bypass` |
+| Reflected server-side template injection           | `ssti.reflected` | `nocapsec doc ssti.reflected` |
 | Command injection via timing                        | `command_injection.time_based` | `nocapsec doc command_injection.time_based` |
 | Command injection via OAST callback                 | `command_injection.oast` | `nocapsec doc command_injection.oast` |
 | SSRF (server fetches a URL you control)             | `ssrf.oast` | `nocapsec doc ssrf.oast` |

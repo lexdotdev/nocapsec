@@ -17,7 +17,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// fakeBrowser returns a predetermined BrowserResult.
+// fakeBrowser returns a fixed result.
 type fakeBrowser struct {
 	result browser.BrowserResult
 	err    error
@@ -25,6 +25,16 @@ type fakeBrowser struct {
 
 func (f *fakeBrowser) Run(_ context.Context, _ browser.BrowserJob) (browser.BrowserResult, error) {
 	return f.result, f.err
+}
+
+type recordingBrowser struct {
+	result   browser.BrowserResult
+	proxyURL string
+}
+
+func (r *recordingBrowser) Run(_ context.Context, job browser.BrowserJob) (browser.BrowserResult, error) {
+	r.proxyURL = job.ProxyURL
+	return r.result, nil
 }
 
 // --- xss.reflected tests ---
@@ -105,6 +115,58 @@ func TestXSSReflectedVerified_Dialog(t *testing.T) {
 	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
+	}
+}
+
+func TestXSSReflectedUsesPolicyProxy(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	nonce := "proxy123"
+	origin := fmt.Sprintf("http://app.example.com:%d", port)
+
+	rb := &recordingBrowser{result: browser.BrowserResult{
+		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search?q=payload"}},
+		Dialogs: []browser.DialogEvent{{
+			Type:         "alert",
+			Message:      "VERIFIER_XSS_" + nonce,
+			SourceOrigin: origin,
+		}},
+		FinalURL: origin + "/search?q=payload",
+	}}
+
+	cleanupCalled := false
+	enforcer := makeEnforcer(t, ip, port)
+	pe, ok := enforcer.(*testPolicyEnforcer)
+	if !ok {
+		t.Fatalf("enforcer = %T, want *testPolicyEnforcer", enforcer)
+	}
+	pe.proxyURL = "http://127.0.0.1:9"
+	pe.cleanupCalled = &cleanupCalled
+
+	env := validators.Env{
+		Browser:   rb,
+		Policy:    pe,
+		Artifacts: artifacts.NewStore(),
+		Clock:     validators.WallClock{},
+	}
+
+	v, _ := validators.Lookup("xss.reflected")
+	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+	if rb.proxyURL != pe.proxyURL {
+		t.Fatalf("proxyURL = %q, want %q", rb.proxyURL, pe.proxyURL)
+	}
+	if !cleanupCalled {
+		t.Fatal("browser proxy cleanup was not called")
 	}
 }
 
@@ -344,7 +406,7 @@ func TestXSSReflectedRejected_JavascriptScheme(t *testing.T) {
 	nonce := "jsscheme"
 	origin := fmt.Sprintf("http://app.example.com:%d", port)
 
-	// Craft a job with a javascript: scheme entrypoint.
+	// javascript: entrypoint is rejected.
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
 			"method": "GET",
@@ -640,7 +702,7 @@ func TestXSSStoredVerified_WithCleanup(t *testing.T) {
 	nonce := "cleanup456"
 	origin := fmt.Sprintf("http://app.example.com:%d", port)
 
-	// Build a job with explicit cleanup in side_effects.
+	// Job declares explicit cleanup.
 	ev, _ := json.Marshal(map[string]any{
 		"setup": []map[string]any{{
 			"method": "POST",
@@ -714,7 +776,7 @@ func TestXSSStoredVerified_WithCleanup(t *testing.T) {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
 
-	// Setup (1) + cleanup (1) = 2 POST calls to /profile.
+	// Setup plus cleanup posts twice.
 	_ = cleanupCalls
 	if profileCalls < 2 {
 		t.Fatalf("profileCalls = %d, want >= 2 (setup + cleanup)", profileCalls)

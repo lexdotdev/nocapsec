@@ -6,8 +6,7 @@ import (
 	"testing"
 )
 
-// Every embedded schema must carry an example that round-trips through Parse,
-// so the printed contract is always runnable and the schema accepts it.
+// Schema examples must parse.
 func TestSchemaExamplesParse(t *testing.T) {
 	types := schemaTypes()
 	if len(types) == 0 {

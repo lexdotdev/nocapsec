@@ -14,7 +14,7 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
 
-// TestGracefulDrain_FinishInFlight ensures Close waits for in-flight jobs.
+// Close waits for in-flight jobs.
 func TestGracefulDrain_FinishInFlight(t *testing.T) {
 	const marker = "DRAIN_TEST_MARKER"
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -45,12 +45,10 @@ func TestGracefulDrain_FinishInFlight(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["` + marker + `"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "` + marker + `", "repetitions": 2}
 }`
 
 	// Submit concurrent jobs.
@@ -70,21 +68,20 @@ func TestGracefulDrain_FinishInFlight(t *testing.T) {
 	}
 	wg.Wait()
 
-	// All should have completed before Close.
+	// All complete before Close.
 	for i, r := range results {
 		if r.Verdict != verdict.Verified {
 			t.Errorf("result[%d] = %q, want verified", i, r.Verdict)
 		}
 	}
 
-	// Close should succeed (pools drained).
+	// Pools are drained.
 	if err := e.Close(); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
 }
 
-// TestGracefulDrain_RejectsAfterClose ensures Verify returns ErrClosed after
-// Close is called.
+// Verify rejects after Close.
 func TestGracefulDrain_RejectsAfterClose(t *testing.T) {
 	e, err := New(Config{Resolver: publicResolver()})
 	if err != nil {
@@ -96,16 +93,15 @@ func TestGracefulDrain_RejectsAfterClose(t *testing.T) {
 
 	_, err = e.Verify(context.Background(), []byte(`{"finding_id":"x","type":"path_traversal.file_read",
 		"target":{"expected_origin":"https://a","allowed_hosts":["a"],"allowed_schemes":["https"]},
-		"evidence":{"request":{"method":"GET","url":"https://a/x"},"vulnerable_parameter":"f",
-		"expected_markers":["M"],"negative_control":{"method":"GET","url":"https://a/y"}},
-		"proof":{"require_marker":true,"require_negative_control_absent":true}}`))
+		"evidence":{"base_request":{"method":"GET","url":"https://a/x?file=normal.txt"},
+		"injection":{"location":{"kind":"query","name":"file"},"payloads":{"candidate":"../../etc/passwd","control":"normal.txt"}}},
+		"proof":{"expected_marker":"M","repetitions":2}}`))
 	if !errors.Is(err, ErrClosed) {
 		t.Fatalf("err = %v, want ErrClosed", err)
 	}
 }
 
-// TestMetrics_CountsVerdictsAndPools confirms metrics track verdicts and pool
-// dispatches.
+// Metrics count verdicts and pools.
 func TestMetrics_CountsVerdictsAndPools(t *testing.T) {
 	const marker = "METRICS_MARKER"
 	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -137,12 +133,10 @@ func TestMetrics_CountsVerdictsAndPools(t *testing.T) {
     "allowed_ports": [` + portStr + `]
   },
   "evidence": {
-    "request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=../../etc/passwd"},
-    "vulnerable_parameter": "file",
-    "expected_markers": ["` + marker + `"],
-    "negative_control": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"}
+    "base_request": {"method": "GET", "url": "http://app.example.com:` + portStr + `/download?file=normal.txt"},
+    "injection": {"location": {"kind": "query", "name": "file"}, "payloads": {"candidate": "../../etc/passwd", "control": "normal.txt"}}
   },
-  "proof": {"require_marker": true, "require_negative_control_absent": true}
+  "proof": {"expected_marker": "` + marker + `", "repetitions": 2}
 }`
 
 	_, _ = e.Verify(context.Background(), []byte(finding))

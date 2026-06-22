@@ -19,19 +19,19 @@ type nopLogger struct{}
 func (nopLogger) Info(string, ...any)  {}
 func (nopLogger) Error(string, ...any) {}
 
-// SlogLogger adapts *slog.Logger to engine Logger.
+// SlogLogger adapts slog.
 type SlogLogger struct{ L *slog.Logger }
 
 func (s SlogLogger) Info(msg string, args ...any)  { s.L.Info(msg, args...) }
 func (s SlogLogger) Error(msg string, args ...any) { s.L.Error(msg, args...) }
 
-// Metrics tracks per-verdict and per-pool counters.
+// Metrics tracks verdict and pool counts.
 type Metrics struct {
-	verdicts sync.Map // verdict.Verdict -> *atomic.Int64
-	poolJobs sync.Map // Capability -> *atomic.Int64
+	verdicts sync.Map
+	poolJobs sync.Map
 }
 
-// NewMetrics returns an initialized Metrics.
+// NewMetrics initializes counters.
 func NewMetrics() *Metrics { return &Metrics{} }
 
 // RecordVerdict increments the counter for v.
@@ -40,19 +40,19 @@ func (m *Metrics) RecordVerdict(v verdict.Verdict) {
 	c.Add(1)
 }
 
-// RecordPool increments the job counter for cap c.
+// RecordPool increments pool count.
 func (m *Metrics) RecordPool(c Capability) {
 	ctr := m.poolCounter(c)
 	ctr.Add(1)
 }
 
-// VerdictCount returns the count for a verdict.
+// VerdictCount returns verdict count.
 func (m *Metrics) VerdictCount(v verdict.Verdict) int64 {
 	c := m.verdictCounter(v)
 	return c.Load()
 }
 
-// PoolCount returns the job count for a cap pool.
+// PoolCount returns pool count.
 func (m *Metrics) PoolCount(c Capability) int64 {
 	ctr := m.poolCounter(c)
 	return ctr.Load()

@@ -12,15 +12,14 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/policy"
 )
 
-// maxResponseBytes caps the response body (4 MiB).
+// maxResponseBytes caps captured bodies.
 const maxResponseBytes = 4 << 20
 
-// Replay runs req through the policy-pinned
-// client (SSRF defense).
+// Replay uses the policy-pinned client.
 func Replay(ctx context.Context, b *ClientBundle, req evidence.Request) (*Capture, error) {
-	// Pin IPs for the initial URL (SSRF defense).
+	// Pin IPs before dialing.
 	b.Checker.ResetRedirects()
-	safe, err := b.Checker.CheckURL(req.URL, policy.PhaseInitial) //nolint:contextcheck // CheckURL's contract drives its own resolver timeout
+	safe, err := b.Checker.CheckURL(req.URL, policy.PhaseInitial) //nolint:contextcheck // CheckURL owns timeout
 	if err != nil {
 		return nil, fmt.Errorf("httpx: initial URL rejected: %w", err)
 	}
@@ -62,7 +61,7 @@ func Replay(ctx context.Context, b *ClientBundle, req evidence.Request) (*Captur
 	}, nil
 }
 
-// buildRequest builds a request from evidence.
+// buildRequest converts evidence to HTTP.
 func buildRequest(ctx context.Context, req evidence.Request) (*http.Request, error) {
 	var body io.Reader = http.NoBody
 	if req.Body != "" {
@@ -75,6 +74,11 @@ func buildRequest(ctx context.Context, req evidence.Request) (*http.Request, err
 	}
 
 	for _, h := range req.Headers {
+		// net/http sends req.Host.
+		if strings.EqualFold(h.Name, "Host") {
+			httpReq.Host = h.Value
+			continue
+		}
 		httpReq.Header.Add(h.Name, h.Value)
 	}
 

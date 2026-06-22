@@ -1,6 +1,6 @@
 ---
 name: nocapsec-exploit
-description: Compose a proof-of-concept exploit for a given vulnerability in an authorized test target and emit it as a nocapsec finding (evidence.json) that the engine can deterministically re-verify. Use when asked to build a PoC, write an exploit, or produce nocapsec evidence/finding JSON for a vulnerability (XSS, SQLi, SSRF, XXE, command injection, open redirect, path traversal, IDOR). Maps the bug to exactly one nocapsec validator type, fills the strict evidence/proof contract, and documents blindspots when runtime proof is not fully achievable.
+description: Compose a proof-of-concept exploit for a given vulnerability in an authorized test target and emit it as a nocapsec finding (evidence.json) that the engine can deterministically re-verify. Use when asked to build a PoC, write an exploit, or produce nocapsec evidence/finding JSON for a vulnerability (XSS, SQLi, NoSQL injection, SSTI, SSRF, XXE, command injection, open redirect, path traversal, IDOR). Maps the bug to exactly one nocapsec validator type, fills the strict evidence/proof contract, and documents blindspots when runtime proof is not fully achievable.
 ---
 
 # nocapsec exploit authoring
@@ -28,7 +28,7 @@ Use this skill when the task is "build a PoC / write an exploit / produce a noca
 finding" for a concrete vulnerability on a target you are authorized to test (pentest
 engagement, CTF, security research, your own app in an isolated workspace).
 
-If the vulnerability does **not** map to one of the 12 supported types (below), nocapsec
+If the vulnerability does **not** map to one of the 16 supported types (below), nocapsec
 cannot verify it. Still produce a manual PoC (`poc.py`) and record it as a **blindspot** —
 do not force a mismatched `type`.
 
@@ -37,16 +37,19 @@ do not force a mismatched `type`.
 Each `type` has its own strict evidence/proof contract. Run **`nocapsec doc <type>`** for the
 full **JSON Schema** (draft 2020-12) **and a runnable example** before writing the JSON —
 field names and enum values must be exact. The printed schema is the exact document the
-engine validates against, so it never drifts from what the parser enforces (the static `.md`
-specs in `specs/` have drifted; trust the CLI).
+engine validates against, so it never drifts from what the parser enforces.
 
 | `type`                          | Class                       | Needs            | Schema |
 | ------------------------------- | --------------------------- | ---------------- | ------ |
 | `xss.reflected`                 | Reflected / DOM XSS         | `-browser`       | `nocapsec doc xss.reflected` |
-| `xss.stored`                    | Stored XSS                  | `-browser` `-authstate` | `nocapsec doc xss.stored` |
+| `xss.stored`                    | Stored XSS                  | `-browser`       | `nocapsec doc xss.stored` |
 | `xss.blind`                     | Blind XSS (OAST)            | `-oast`          | `nocapsec doc xss.blind` |
 | `sqli.time_based`               | Time-based blind SQLi       | (timing)         | `nocapsec doc sqli.time_based` |
 | `sqli.boolean_based`            | Boolean blind SQLi          | (http)           | `nocapsec doc sqli.boolean_based` |
+| `sqli.inband`                   | In-band / UNION SQLi (read channel) | (http)   | `nocapsec doc sqli.inband` |
+| `sqli.union_extract`            | In-band SQLi reading a NAMED table  | (http; `-authstate` if write/read needs login) | `nocapsec doc sqli.union_extract` |
+| `nosqli.auth_bypass`            | NoSQL operator-injection auth bypass | (http)          | `nocapsec doc nosqli.auth_bypass` |
+| `ssti.reflected`                | Reflected server-side template injection | (http)      | `nocapsec doc ssti.reflected` |
 | `command_injection.time_based`  | Time-based command injection| (timing)         | `nocapsec doc command_injection.time_based` |
 | `command_injection.oast`        | OAST command injection      | `-oast`          | `nocapsec doc command_injection.oast` |
 | `ssrf.oast`                     | SSRF (OAST callback)        | `-oast` `-internal`* | `nocapsec doc ssrf.oast` |

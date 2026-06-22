@@ -6,23 +6,21 @@ import (
 	"sync"
 )
 
-// Dispatcher routes a Task to its pool under
-// the per-target limit.
+// Dispatcher routes tasks to pools.
 type Dispatcher interface {
-	// Dispatch runs t on its pool, blocking until done.
+	// Dispatch blocks until done.
 	Dispatch(ctx context.Context, t Task) error
-	// Close drains pools and stops accepting work.
+	// Close drains pools.
 	Close() error
 }
 
-// inProcessDispatcher: one pool per capability
-// plus a per-key limiter.
+// inProcessDispatcher is in-memory.
 type inProcessDispatcher struct {
 	pools   map[Capability]*pool
 	limiter *limiter
 }
 
-// newDispatcher starts one pool per capability.
+// newDispatcher starts all pools.
 func newDispatcher(limits Limits) *inProcessDispatcher {
 	pools := make(map[Capability]*pool, len(capabilities))
 	for _, c := range capabilities {
@@ -51,8 +49,7 @@ func (d *inProcessDispatcher) Close() error {
 	return nil
 }
 
-// limiter caps work per (capability,target);
-// 0 is unlimited.
+// limiter caps work per cap+target.
 type limiter struct {
 	limits Limits
 	mu     sync.Mutex
@@ -63,7 +60,7 @@ func newLimiter(limits Limits) *limiter {
 	return &limiter{limits: limits, sems: map[string]chan struct{}{}}
 }
 
-// acquire blocks for a slot, returns release func.
+// acquire returns a release func.
 func (l *limiter) acquire(ctx context.Context, c Capability, target string) (func(), error) {
 	sem := l.semFor(c, target)
 	if sem == nil {
@@ -77,8 +74,7 @@ func (l *limiter) acquire(ctx context.Context, c Capability, target string) (fun
 	}
 }
 
-// semFor returns the key's semaphore;
-// nil means unlimited.
+// semFor returns nil when unlimited.
 func (l *limiter) semFor(c Capability, target string) chan struct{} {
 	n := l.limits.For(c)
 	if n < 1 {

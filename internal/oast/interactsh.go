@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// Interactsh-specific errors.
+// Interactsh errors.
 var (
 	ErrRegistration = errors.New("oast: interactsh registration failed")
 	ErrDeregister   = errors.New("oast: interactsh deregister failed")
@@ -35,18 +35,18 @@ const (
 	correlationIDLength = 20
 )
 
-// tokenRecord holds a token's decryption keys.
+// tokenRecord holds decrypt keys.
 type tokenRecord struct {
 	aesKey    []byte
-	secretKey string // hex secret sent to server
+	secretKey string
 }
 
-// HTTPDoer executes HTTP requests; for tests.
+// HTTPDoer is injectable for tests.
 type HTTPDoer interface {
 	Do(*http.Request) (*http.Response, error)
 }
 
-// interactshClient is the Interactsh-backed OAST.
+// interactshClient backs OAST.
 type interactshClient struct {
 	serverURL string
 	domain    string
@@ -71,7 +71,7 @@ func WithClock(cl Clock) InteractshOption {
 	return func(c *interactshClient) { c.clock = cl }
 }
 
-// NewInteractshClient: OAST on self-hosted server.
+// NewInteractshClient uses self-hosted Interactsh.
 func NewInteractshClient(serverURL, domain string, opts ...InteractshOption) OAST {
 	c := &interactshClient{
 		serverURL: strings.TrimRight(serverURL, "/"),

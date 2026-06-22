@@ -29,7 +29,7 @@ type fixedClock struct{ now time.Time }
 
 func (c fixedClock) Now() time.Time { return c.now }
 
-// idorAuthStore builds a Store with two auth states: owner and attacker.
+// idorAuthStore creates owner and attacker.
 func idorAuthStore(t *testing.T) authstate.Store {
 	t.Helper()
 	clock := fixedClock{now: time.Date(2026, 6, 18, 12, 0, 0, 0, time.UTC)}
@@ -119,14 +119,13 @@ func idorEnv(t *testing.T, srv *httptest.Server, authStore authstate.Store) vali
 	}
 }
 
-// idorHandler simulates an app with IDOR: owner creates a document,
-// attacker can read it by ID.
+// idorHandler exposes cross-user reads.
 func idorHandler() http.Handler {
 	docs := map[string]string{} // id -> body
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost && r.URL.Path == "/api/documents":
-			// Owner creates: return an ID and store the body.
+			// Owner creates the document.
 			var body struct {
 				Title string `json:"title"`
 			}
@@ -181,7 +180,7 @@ func TestIDORReadVerified(t *testing.T) {
 	}
 }
 
-// Attacker cannot see the canary -> not_reproduced.
+// Missing canary is not_reproduced.
 func TestIDORReadNotReproduced(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
@@ -398,7 +397,7 @@ func TestIDORReadExpiredAuth(t *testing.T) {
 
 // Resource ID extraction from JSON response.
 func TestIDORReadResourceIDExtraction(t *testing.T) {
-	// This tests the full flow with a JSON response that contains an "id" field.
+	// JSON id extraction flow.
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == http.MethodPost:
@@ -432,7 +431,140 @@ func TestIDORReadResourceIDExtraction(t *testing.T) {
 	}
 }
 
-// Verify auth headers are injected: owner token on setup, attacker token on attack.
+// created_id_pointer reads nested ids.
+func TestIDORReadNestedCreatedIDPointer(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			// Nested resource id.
+			_, _ = w.Write([]byte(`{"status":"ok","data":{"id":"res-nested-7"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/documents/res-nested-7":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"title":"canary-testnonce"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	store := idorAuthStore(t)
+
+	ev, _ := json.Marshal(map[string]any{
+		"resource_owner_auth_state_id": "owner-session",
+		"attacker_auth_state_id":       "attacker-session",
+		"created_id_pointer":           "/data/id",
+		"setup_resource": map[string]string{
+			"method": "POST",
+			"url":    base + "/api/documents",
+			"body":   `{"title":"canary-{{nonce}}"}`,
+		},
+		"attack_request": map[string]string{
+			"method": "GET",
+			"url":    base + "/api/documents/{{created_resource_id}}",
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_marker":       "canary-{{nonce}}",
+		"require_owner_control": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-idor-nested",
+			Type:      "idor.read",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "testnonce",
+	}
+
+	v, _ := validators.Lookup("idor.read")
+	res, err := v.Validate(context.Background(), job, idorEnv(t, srv, store))
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified (nested id via created_id_pointer)", res.Verdict)
+	}
+}
+
+// Missing pointer is inconclusive.
+func TestIDORReadUnresolvedPointerInconclusive(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.Method {
+		case http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			// No data.id path.
+			_, _ = w.Write([]byte(`{"status":"ok"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	store := idorAuthStore(t)
+
+	ev, _ := json.Marshal(map[string]any{
+		"resource_owner_auth_state_id": "owner-session",
+		"attacker_auth_state_id":       "attacker-session",
+		"created_id_pointer":           "/data/id",
+		"setup_resource": map[string]string{
+			"method": "POST",
+			"url":    base + "/api/documents",
+			"body":   `{"title":"canary-{{nonce}}"}`,
+		},
+		"attack_request": map[string]string{
+			"method": "GET",
+			"url":    base + "/api/documents/{{created_resource_id}}",
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_marker":       "canary-{{nonce}}",
+		"require_owner_control": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-idor-unresolved-pointer",
+			Type:      "idor.read",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "testnonce",
+	}
+
+	v, _ := validators.Lookup("idor.read")
+	res, err := v.Validate(context.Background(), job, idorEnv(t, srv, store))
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Inconclusive {
+		t.Fatalf("verdict = %q, want inconclusive (unresolved pointer is authoring error)", res.Verdict)
+	}
+}
+
+// Auth headers match setup and attack roles.
 func TestIDORReadInjectsAuthHeaders(t *testing.T) {
 	var setupAuth, attackAuth string
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

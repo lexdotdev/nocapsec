@@ -13,10 +13,17 @@ import (
 	"github.com/lexdotdev/nocapsec/internal/artifacts"
 	"github.com/lexdotdev/nocapsec/internal/browser"
 	"github.com/lexdotdev/nocapsec/internal/evidence"
+	"github.com/lexdotdev/nocapsec/internal/oast"
 	"github.com/lexdotdev/nocapsec/internal/policy"
 	"github.com/lexdotdev/nocapsec/internal/validators"
 	"github.com/lexdotdev/nocapsec/internal/verdict"
 )
+
+const fakeOASTOrigin = "http://fake-0001.oast.test"
+
+func fakeOAST() *oast.Fake {
+	return oast.NewFake(validators.WallClock{}, "oast.test")
+}
 
 func redirectJob(t *testing.T, port int, nonce, externalOrigin string) validators.Job {
 	t.Helper()
@@ -24,7 +31,7 @@ func redirectJob(t *testing.T, port int, nonce, externalOrigin string) validator
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
 			"method": "GET",
-			"url":    origin + "/login?next=" + externalOrigin + "/redir/" + nonce,
+			"url":    origin + "/login?next={{oast_url}}/redir/{{nonce}}",
 		},
 		"redirect_parameter":      "next",
 		"expected_initial_origin": origin,
@@ -112,14 +119,15 @@ func TestOpenRedirectVerified(t *testing.T) {
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{
-			{Origin: origin, URL: origin + "/login?next=http://evil.example.com:8080/redir/" + nonce},
-			{Origin: externalOrigin, URL: externalOrigin + "/redir/" + nonce},
+			{Origin: origin, URL: origin + "/login?next=" + fakeOASTOrigin + "/redir/" + nonce},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/redir/" + nonce},
 		},
-		FinalURL: externalOrigin + "/redir/" + nonce,
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -153,17 +161,18 @@ func TestOpenRedirectVerifiedNetworkTransition(t *testing.T) {
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{
-			{Origin: externalOrigin, URL: externalOrigin + "/redir/" + nonce},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/redir/" + nonce},
 		},
 		Network: []browser.NetEvent{
-			{URL: origin + "/login?next=" + externalOrigin + "/redir/" + nonce, Method: "GET"},
-			{URL: externalOrigin + "/redir/" + nonce, Method: "GET"},
+			{URL: origin + "/login?next=" + fakeOASTOrigin + "/redir/" + nonce, Method: "GET"},
+			{URL: fakeOASTOrigin + "/redir/" + nonce, Method: "GET"},
 		},
-		FinalURL: externalOrigin + "/redir/" + nonce,
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -192,7 +201,7 @@ func TestOpenRedirectEncodedNonceSlot(t *testing.T) {
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
 			"method": "GET",
-			"url":    origin + "/login?next=" + externalOrigin + "/redir/%7B%7Bnonce%7D%7D",
+			"url":    origin + "/login?next=%7B%7Boast_url%7D%7D/redir/%7B%7Bnonce%7D%7D",
 		},
 		"redirect_parameter":      "next",
 		"expected_initial_origin": origin,
@@ -209,6 +218,54 @@ func TestOpenRedirectEncodedNonceSlot(t *testing.T) {
 
 	env := validators.Env{
 		Browser:   entrypointRedirectBrowser{origin: origin},
+		OAST:      fakeOAST(),
+		Policy:    redirectEnforcer(t, ip, port),
+		Artifacts: artifacts.NewStore(),
+		Clock:     validators.WallClock{},
+	}
+
+	v, _ := validators.Lookup("open_redirect")
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+}
+
+func TestOpenRedirectVerifiedOASTHostSlot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	nonce := "hostslot"
+	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	externalOrigin := "http://evil.example.com:8080"
+	ev, _ := json.Marshal(map[string]any{
+		"entrypoint": map[string]string{
+			"method": "GET",
+			"url":    origin + "//{{oast_host}}/redir/{{nonce}}",
+		},
+		"redirect_parameter":      "path",
+		"expected_initial_origin": origin,
+		"expected_final_origin":   externalOrigin,
+	})
+	job := redirectJob(t, port, nonce, externalOrigin)
+	job.Finding.Evidence = ev
+
+	fb := &fakeBrowser{result: browser.BrowserResult{
+		Navigation: []browser.NavEvent{
+			{Origin: origin, URL: origin + "//fake-0001.oast.test/redir/" + nonce},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/redir/" + nonce},
+		},
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
+	}}
+	env := validators.Env{
+		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -234,16 +291,17 @@ func TestOpenRedirectNotReproduced_NoTransition(t *testing.T) {
 	nonce := "notrans"
 	externalOrigin := "http://evil.example.com:8080"
 
-	// Only external nav events -- no transition from target.
+	// No transition from target.
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{
-			{Origin: externalOrigin, URL: externalOrigin + "/redir/" + nonce},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/redir/" + nonce},
 		},
-		FinalURL: externalOrigin + "/redir/" + nonce,
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -275,13 +333,14 @@ func TestOpenRedirectNotReproduced_NonceMissing(t *testing.T) {
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{
 			{Origin: origin, URL: origin + "/login?next=x"},
-			{Origin: externalOrigin, URL: externalOrigin + "/other"},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/other"},
 		},
-		FinalURL: externalOrigin + "/other",
+		FinalURL: fakeOASTOrigin + "/other",
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -319,6 +378,7 @@ func TestOpenRedirectNotReproduced_FinalOriginWrong(t *testing.T) {
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -382,6 +442,7 @@ func TestOpenRedirectRejected_JavascriptScheme(t *testing.T) {
 	fb := &fakeBrowser{result: browser.BrowserResult{}}
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -445,6 +506,7 @@ func TestOpenRedirectRejected_DataScheme(t *testing.T) {
 	fb := &fakeBrowser{result: browser.BrowserResult{}}
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -481,6 +543,7 @@ func TestOpenRedirectRejected_FinalJavascriptScheme(t *testing.T) {
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -511,6 +574,7 @@ func TestOpenRedirectInconclusive_BrowserError(t *testing.T) {
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -579,6 +643,46 @@ func TestOpenRedirectInvalid_BadOrigin(t *testing.T) {
 	}
 }
 
+func TestOpenRedirectInvalid_MissingOASTSlot(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	ev, _ := json.Marshal(map[string]any{
+		"entrypoint":              map[string]string{"method": "GET", "url": origin + "/login?next=http://evil.example.com/"},
+		"redirect_parameter":      "next",
+		"expected_initial_origin": origin,
+	})
+	proof, _ := json.Marshal(map[string]any{"timeout_ms": 5000})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "missing-oast-slot",
+			Type:      "open_redirect",
+			Evidence:  ev,
+			Proof:     proof,
+		},
+	}
+	env := validators.Env{
+		Browser:   &fakeBrowser{},
+		OAST:      fakeOAST(),
+		Policy:    redirectEnforcer(t, ip, port),
+		Artifacts: artifacts.NewStore(),
+		Clock:     validators.WallClock{},
+	}
+
+	v, _ := validators.Lookup("open_redirect")
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Invalid {
+		t.Fatalf("verdict = %q, want invalid", res.Verdict)
+	}
+}
+
 func TestOpenRedirectNotReproduced_NoNavEvents(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -590,11 +694,12 @@ func TestOpenRedirectNotReproduced_NoNavEvents(t *testing.T) {
 	externalOrigin := "http://evil.example.com:8080"
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
-		FinalURL: externalOrigin + "/redir/" + nonce,
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -622,11 +727,11 @@ func TestOpenRedirectNotReproduced_ExceedsMaxHops(t *testing.T) {
 	origin := fmt.Sprintf("http://app.example.com:%d", port)
 	externalOrigin := "http://evil.example.com:8080"
 
-	// Create evidence with max_hops=2 but the redirect chain is longer.
+	// Redirect chain exceeds max_hops.
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
 			"method": "GET",
-			"url":    origin + "/login?next=" + externalOrigin + "/redir/" + nonce,
+			"url":    origin + "/login?next={{oast_url}}/redir/{{nonce}}",
 		},
 		"redirect_parameter":      "next",
 		"expected_initial_origin": origin,
@@ -653,18 +758,19 @@ func TestOpenRedirectNotReproduced_ExceedsMaxHops(t *testing.T) {
 		Nonce: nonce,
 	}
 
-	// 3 nav events but max_hops=2, so the external one at index 2 is past the limit.
+	// External nav is past the limit.
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{
 			{Origin: origin, URL: origin + "/login"},
 			{Origin: origin, URL: origin + "/auth/callback"},
-			{Origin: externalOrigin, URL: externalOrigin + "/redir/" + nonce},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/redir/" + nonce},
 		},
-		FinalURL: externalOrigin + "/redir/" + nonce,
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},
@@ -697,13 +803,14 @@ func TestOpenRedirectVerified_MultiHop(t *testing.T) {
 		Navigation: []browser.NavEvent{
 			{Origin: origin, URL: origin + "/login"},
 			{Origin: origin, URL: origin + "/oauth/callback"},
-			{Origin: externalOrigin, URL: externalOrigin + "/redir/" + nonce},
+			{Origin: fakeOASTOrigin, URL: fakeOASTOrigin + "/redir/" + nonce},
 		},
-		FinalURL: externalOrigin + "/redir/" + nonce,
+		FinalURL: fakeOASTOrigin + "/redir/" + nonce,
 	}}
 
 	env := validators.Env{
 		Browser:   fb,
+		OAST:      fakeOAST(),
 		Policy:    redirectEnforcer(t, ip, port),
 		Artifacts: artifacts.NewStore(),
 		Clock:     validators.WallClock{},

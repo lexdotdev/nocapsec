@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// Canonicalize: replay-safe form.
-// Lowers scheme/host, canonicalizes headers.
+// Canonicalize normalizes replay fields.
 func Canonicalize(f *Finding) error {
 	if len(f.Evidence) > 0 {
 		var v any
@@ -36,7 +35,7 @@ func Canonicalize(f *Finding) error {
 	return nil
 }
 
-// canonicalizeValue canon's request-shaped nodes.
+// canonicalizeValue finds request nodes.
 func canonicalizeValue(v any) error {
 	switch t := v.(type) {
 	case map[string]any:
@@ -60,14 +59,14 @@ func canonicalizeValue(v any) error {
 	return nil
 }
 
-// isRequestShape reports a string method and url.
+// isRequestShape checks method+url.
 func isRequestShape(m map[string]any) bool {
 	_, hasMethod := m["method"].(string)
 	_, hasURL := m["url"].(string)
 	return hasMethod && hasURL
 }
 
-// canonicalizeRequestMap canon's url + headers.
+// canonicalizeRequestMap normalizes request maps.
 func canonicalizeRequestMap(m map[string]any) error {
 	if raw, ok := m["url"].(string); ok && raw != "" {
 		canon, err := canonicalURL(raw)
@@ -88,7 +87,7 @@ func canonicalizeRequestMap(m map[string]any) error {
 	return nil
 }
 
-// canonicalizeRequest canon's URL + headers.
+// canonicalizeRequest normalizes a request.
 func canonicalizeRequest(r *Request) error {
 	if r.URL != "" {
 		canon, err := canonicalURL(r.URL)
@@ -103,7 +102,7 @@ func canonicalizeRequest(r *Request) error {
 	return nil
 }
 
-// canonicalURL lowers scheme+host, strips dot.
+// canonicalURL normalizes scheme and host.
 func canonicalURL(raw string) (string, error) {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -115,7 +114,7 @@ func canonicalURL(raw string) (string, error) {
 	return u.String(), nil
 }
 
-// rebuildHost rebuilds host[:port], brackets IPv6.
+// rebuildHost brackets IPv6.
 func rebuildHost(host, port string) string {
 	if host == "" {
 		return ""
@@ -129,8 +128,7 @@ func rebuildHost(host, port string) string {
 	return host
 }
 
-// ExtractRequests returns all requests:
-// evidence, controls, cleanup.
+// ExtractRequests gathers all requests.
 func ExtractRequests(f *Finding) []Request {
 	var reqs []Request
 	if len(f.Evidence) > 0 {
@@ -144,7 +142,7 @@ func ExtractRequests(f *Finding) []Request {
 	return reqs
 }
 
-// collectRequests gathers request-shaped objects.
+// collectRequests finds request objects.
 func collectRequests(v any, out *[]Request) {
 	switch t := v.(type) {
 	case map[string]any:
