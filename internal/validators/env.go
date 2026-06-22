@@ -92,6 +92,13 @@ func hasMarkerSlot(s string) bool {
 		strings.Contains(s, "%7b%7bsqli_marker%7d%7d")
 }
 
+// hasNonceSlot reports whether s carries {{nonce}}.
+func hasNonceSlot(s string) bool {
+	return strings.Contains(s, "{{nonce}}") ||
+		strings.Contains(s, "%7B%7Bnonce%7D%7D") ||
+		strings.Contains(s, "%7b%7bnonce%7d%7d")
+}
+
 // Validator verifies a single finding type.
 type Validator interface {
 	Type() string

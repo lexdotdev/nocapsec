@@ -28,7 +28,7 @@ Use this skill when the task is "build a PoC / write an exploit / produce a noca
 finding" for a concrete vulnerability on a target you are authorized to test (pentest
 engagement, CTF, security research, your own app in an isolated workspace).
 
-If the vulnerability does **not** map to one of the 13 supported types (below), nocapsec
+If the vulnerability does **not** map to one of the 14 supported types (below), nocapsec
 cannot verify it. Still produce a manual PoC (`poc.py`) and record it as a **blindspot** —
 do not force a mismatched `type`.
 
@@ -48,6 +48,7 @@ specs in `specs/` have drifted; trust the CLI).
 | `sqli.time_based`               | Time-based blind SQLi       | (timing)         | `nocapsec doc sqli.time_based` |
 | `sqli.boolean_based`            | Boolean blind SQLi          | (http)           | `nocapsec doc sqli.boolean_based` |
 | `sqli.inband`                   | In-band / UNION SQLi (read channel) | (http)   | `nocapsec doc sqli.inband` |
+| `sqli.union_extract`            | In-band SQLi reading a NAMED table  | (http; `-authstate` if write/read needs login) | `nocapsec doc sqli.union_extract` |
 | `command_injection.time_based`  | Time-based command injection| (timing)         | `nocapsec doc command_injection.time_based` |
 | `command_injection.oast`        | OAST command injection      | `-oast`          | `nocapsec doc command_injection.oast` |
 | `ssrf.oast`                     | SSRF (OAST callback)        | `-oast` `-internal`* | `nocapsec doc ssrf.oast` |
