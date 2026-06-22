@@ -188,6 +188,17 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 		oastValue = tok.Domain
 	}
 
+	// Token mode: the author placed the token anywhere in the request (shell
+	// breakout, multipart filename, query, header, JSON). Substitute it across
+	// the whole request, not a parsed form field, so the surrounding payload
+	// (e.g. `;curl${IFS}{{oast_url}};`) survives.
+	switch strings.TrimSpace(slotTarget) {
+	case "{{oast_url}}":
+		return substituteOASTToken(req, "oast_url", tok.URLHTTPS), nil
+	case "{{oast_host}}":
+		return substituteOASTToken(req, "oast_host", tok.Domain), nil
+	}
+
 	if slotTarget == "xml_external_entity_url" {
 		if req.Body == "" {
 			return evidence.Request{}, fmt.Errorf("empty body for XML entity injection")
@@ -200,6 +211,23 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 	// "body.<field>" or plain name: form body field.
 	field := strings.TrimPrefix(slotTarget, "body.")
 	return injectValue(req, InjectionLocation{Kind: kindForm, Name: field}, oastValue)
+}
+
+// substituteOASTToken plants val at the token across
+// the request URL, body, and header values.
+func substituteOASTToken(req evidence.Request, token, val string) evidence.Request {
+	out := req
+	out.URL = replaceSlot(out.URL, token, val)
+	out.Body = replaceSlot(out.Body, token, val)
+	if len(out.Headers) > 0 {
+		hs := make([]evidence.Header, len(out.Headers))
+		copy(hs, out.Headers)
+		for i := range hs {
+			hs[i].Value = replaceSlot(hs[i].Value, token, val)
+		}
+		out.Headers = hs
+	}
+	return out
 }
 
 // injectFormField sets a field in URL-encoded body.

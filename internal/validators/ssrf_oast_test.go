@@ -631,6 +631,202 @@ func TestSSRFOASTQueryInjection(t *testing.T) {
 	}
 }
 
+// TestSSRFOASTHeaderXForwardedHost: SSRF where the fetched host comes from an
+// X-Forwarded-Host header (G1). The engine plants the scheme-stripped callback
+// authority into the declared header slot, and a target-sourced callback proves
+// it. Mirrors ChurchCRM #575 / meteor #178 shapes.
+func TestSSRFOASTHeaderXForwardedHost(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotXFH string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotXFH = r.Header.Get("X-Forwarded-Host")
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("ssrf.oast")
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "GET",
+			"url":    base + "/setup/prereq-check",
+			"headers": []map[string]string{
+				{"name": "X-Forwarded-Host", "value": "placeholder.invalid"},
+			},
+		},
+		"injection_location": map[string]string{
+			"kind": "header",
+			"name": "X-Forwarded-Host",
+		},
+		"expected_protocols": []string{"http", "dns"},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":             "oast_interaction",
+		"poll_window_seconds":         30,
+		"require_source_not_verifier": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-ssrf-xfh",
+			Type:      "ssrf.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "xfh-nonce",
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			if tok := findFakeToken(fake); tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "curl/8.0",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+	// The OAST authority must have replaced the placeholder header value.
+	if gotXFH == "placeholder.invalid" || gotXFH == "" {
+		t.Fatalf("X-Forwarded-Host not injected: %q", gotXFH)
+	}
+	if !containsSubstring(gotXFH, "oast.test") {
+		t.Fatalf("injected X-Forwarded-Host missing OAST authority: %q", gotXFH)
+	}
+	if containsSubstring(gotXFH, "http://") || containsSubstring(gotXFH, "https://") {
+		t.Fatalf("header value should be scheme-stripped authority, got %q", gotXFH)
+	}
+}
+
+// TestSSRFOASTHostHeaderReachesWire: a Host injection slot must reach the wire
+// via http.Request.Host (net/http ignores Header["Host"]) — exercises the
+// buildRequest gotcha fix. Mirrors meteor spiderable #178 (Host -> fetched URL).
+func TestSSRFOASTHostHeaderReachesWire(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotHost string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHost = r.Host
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("ssrf.oast")
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "GET",
+			"url":    base + "/page",
+			"headers": []map[string]string{
+				{"name": "Host", "value": "placeholder.invalid"},
+			},
+		},
+		"injection_location": map[string]string{
+			"kind": "header",
+			"name": "Host",
+		},
+		"expected_protocols": []string{"http", "dns"},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":             "oast_interaction",
+		"poll_window_seconds":         30,
+		"require_source_not_verifier": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-ssrf-host",
+			Type:      "ssrf.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "host-nonce",
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			if tok := findFakeToken(fake); tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "PhantomJS",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+	// The injected Host must have reached the wire (not the placeholder).
+	if gotHost == "placeholder.invalid" || gotHost == "" {
+		t.Fatalf("Host header not injected onto the wire: %q", gotHost)
+	}
+	if !containsSubstring(gotHost, "oast.test") {
+		t.Fatalf("injected Host missing OAST authority: %q", gotHost)
+	}
+}
+
 // TestSSRFOASTNoiseCallbackIgnored: only noise callbacks -> not_reproduced.
 func TestSSRFOASTNoiseCallbackIgnored(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))

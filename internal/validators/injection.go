@@ -2,6 +2,7 @@ package validators
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 )
@@ -11,6 +12,7 @@ const (
 	kindQuery    = "query"
 	kindForm     = "form"
 	kindJSONBody = "json_body"
+	kindHeader   = "header"
 )
 
 // InjectionLocation names a declared request slot.
@@ -23,7 +25,7 @@ type InjectionLocation struct {
 // valid reports whether loc names a usable slot.
 func (loc InjectionLocation) valid() bool {
 	switch loc.Kind {
-	case kindQuery, kindForm:
+	case kindQuery, kindForm, kindHeader:
 		return loc.Name != ""
 	case kindJSONBody:
 		return loc.JSONPointer != ""
@@ -53,7 +55,30 @@ func injectValue(req evidence.Request, loc InjectionLocation, value string) (evi
 		out := req
 		out.Body = patched
 		return out, nil
+	case kindHeader:
+		return injectHeader(req, loc.Name, value)
 	default:
 		return evidence.Request{}, fmt.Errorf("unsupported injection kind %q", loc.Kind)
 	}
+}
+
+// injectHeader writes value into the declared header,
+// which must already exist in base_request. A Host
+// header reaches the wire via buildRequest.
+func injectHeader(req evidence.Request, name, value string) (evidence.Request, error) {
+	out := req
+	hs := make([]evidence.Header, len(req.Headers))
+	copy(hs, req.Headers)
+	found := false
+	for i := range hs {
+		if strings.EqualFold(hs[i].Name, name) {
+			hs[i].Value = value
+			found = true
+		}
+	}
+	if !found {
+		return evidence.Request{}, fmt.Errorf("missing header %q", name)
+	}
+	out.Headers = hs
+	return out, nil
 }

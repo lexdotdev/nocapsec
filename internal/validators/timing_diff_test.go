@@ -468,3 +468,73 @@ func TestTimingInjectionLocationAbsent(t *testing.T) {
 		t.Fatalf("verdict = %q, want invalid (injection location absent from base_request)", res.Verdict)
 	}
 }
+
+// G3: timeout_ms bounds a single replay. A high arm that hangs far longer than
+// timeout_ms must not block forever — the bounded replay errors and the verdict
+// is inconclusive (never a false verified/not_reproduced). Without the per-replay
+// context deadline the timing client has no timeout and would hang indefinitely.
+func TestTimingTimeoutBoundsHungArm(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get(timingParam) == valHigh {
+			// Hang well past timeout_ms, but release on client cancel so
+			// httptest.Server.Close() does not block on this handler.
+			select {
+			case <-time.After(5 * time.Second):
+			case <-r.Context().Done():
+			}
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html><p>ok</p></html>`))
+	}))
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	ev, _ := json.Marshal(map[string]any{
+		"base_request": map[string]string{"method": "GET", "url": base + "/item?id=1"},
+		"injection": map[string]any{
+			"location": map[string]string{"kind": "query", "name": timingParam},
+			"payloads": map[string]string{
+				"control":    valControl,
+				"delay_low":  valLow,
+				"delay_high": valHigh,
+			},
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"repetitions":         3,
+		"min_median_delta_ms": 3000,
+		"timeout_ms":          250,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-timeout",
+			Type:      "sqli.time_based",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+	}
+
+	v, _ := validators.Lookup("sqli.time_based")
+	env := validators.Env{Policy: testEnforcer(t, srv), Artifacts: artifacts.NewStore(), Clock: validators.WallClock{}}
+
+	start := time.Now()
+	res, _ := v.Validate(context.Background(), job, env)
+	elapsed := time.Since(start)
+
+	if res.Verdict != verdict.Inconclusive {
+		t.Fatalf("verdict = %q, want inconclusive (hung arm bounded by timeout_ms)", res.Verdict)
+	}
+	// Must be bounded: nowhere near the 5s hang.
+	if elapsed > 3*time.Second {
+		t.Fatalf("timeout_ms did not bound the replay: took %v", elapsed)
+	}
+}

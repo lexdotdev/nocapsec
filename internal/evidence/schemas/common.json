@@ -54,9 +54,9 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["kind"],
-      "description": "One declared slot. kind=query|form needs name; json_body needs json_pointer. The position must already exist in base_request.",
+      "description": "One declared slot. kind=query|form|header needs name; json_body needs json_pointer. The position must already exist in base_request (header: the named header must be present in base_request.headers).",
       "properties": {
-        "kind": { "enum": ["query", "form", "json_body"] },
+        "kind": { "enum": ["query", "form", "json_body", "header"] },
         "name": { "type": "string" },
         "json_pointer": { "type": "string" }
       }

@@ -70,34 +70,25 @@ type Result struct {
 // proofJSON marshals a proof block.
 func proofJSON(v any) json.RawMessage { b, _ := json.Marshal(v); return b } //nolint:errchkjson // simple struct
 
-func replaceNonceSlot(s, nonce string) string {
-	s = strings.ReplaceAll(s, "{{nonce}}", nonce)
-	s = strings.ReplaceAll(s, "%7B%7Bnonce%7D%7D", nonce)
-	return strings.ReplaceAll(s, "%7b%7bnonce%7d%7d", nonce)
+// replaceSlot plants val at every {{token}} slot,
+// raw and URL-encoded (upper/lower).
+func replaceSlot(s, token, val string) string {
+	s = strings.ReplaceAll(s, "{{"+token+"}}", val)
+	s = strings.ReplaceAll(s, "%7B%7B"+token+"%7D%7D", val)
+	return strings.ReplaceAll(s, "%7b%7b"+token+"%7d%7d", val)
 }
 
-// replaceMarkerSlot plants the engine's computed SQL
-// expression (e.g. "73331*91237") at every
-// {{sqli_marker}} slot, before URL/body encoding.
-func replaceMarkerSlot(s, expr string) string {
-	s = strings.ReplaceAll(s, "{{sqli_marker}}", expr)
-	s = strings.ReplaceAll(s, "%7B%7Bsqli_marker%7D%7D", expr)
-	return strings.ReplaceAll(s, "%7b%7bsqli_marker%7d%7d", expr)
+// hasSlot reports whether s carries {{token}}.
+func hasSlot(s, token string) bool {
+	return strings.Contains(s, "{{"+token+"}}") ||
+		strings.Contains(s, "%7B%7B"+token+"%7D%7D") ||
+		strings.Contains(s, "%7b%7b"+token+"%7d%7d")
 }
 
-// hasMarkerSlot reports whether s carries the slot.
-func hasMarkerSlot(s string) bool {
-	return strings.Contains(s, "{{sqli_marker}}") ||
-		strings.Contains(s, "%7B%7Bsqli_marker%7D%7D") ||
-		strings.Contains(s, "%7b%7bsqli_marker%7d%7d")
-}
-
-// hasNonceSlot reports whether s carries {{nonce}}.
-func hasNonceSlot(s string) bool {
-	return strings.Contains(s, "{{nonce}}") ||
-		strings.Contains(s, "%7B%7Bnonce%7D%7D") ||
-		strings.Contains(s, "%7b%7bnonce%7d%7d")
-}
+func replaceNonceSlot(s, nonce string) string { return replaceSlot(s, "nonce", nonce) }
+func replaceMarkerSlot(s, expr string) string { return replaceSlot(s, "sqli_marker", expr) }
+func hasMarkerSlot(s string) bool             { return hasSlot(s, "sqli_marker") }
+func hasNonceSlot(s string) bool              { return hasSlot(s, "nonce") }
 
 // Validator verifies a single finding type.
 type Validator interface {

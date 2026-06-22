@@ -6,7 +6,8 @@
   "x-notes": [
     "resource_owner_auth_state_id and attacker_auth_state_id must differ and resolve in the -authstate file; idor applies each state's credential headers map.",
     "Top-level auth stays { \"required\": false } — idor authenticates via the two evidence ids, not the single top-level ref.",
-    "{{nonce}} goes in setup_resource.body and expected_marker; {{created_resource_id}} goes in attack_request.url (engine fills it from the setup response's id field)."
+    "{{nonce}} goes in setup_resource.body and expected_marker; {{created_resource_id}} goes in attack_request.url (engine fills it from the setup response's id field).",
+    "If the create response nests or array-wraps the id (e.g. {\"data\":{\"id\":..}} or [{\"uuid\":..}]), set created_id_pointer to an RFC-6901 pointer (e.g. /data/id, /0/uuid); otherwise the top-level id/ID/resource_id/resourceId heuristic is used."
   ],
   "type": "object",
   "additionalProperties": false,
@@ -27,7 +28,8 @@
         "resource_owner_auth_state_id": { "type": "string" },
         "attacker_auth_state_id": { "type": "string" },
         "setup_resource": { "$ref": "#/$defs/request" },
-        "attack_request": { "$ref": "#/$defs/request" }
+        "attack_request": { "$ref": "#/$defs/request" },
+        "created_id_pointer": { "type": "string", "description": "RFC-6901 pointer to the created id in the setup response when it is nested/array-wrapped (e.g. /data/id, /0/uuid)." }
       }
     },
     "proof": {

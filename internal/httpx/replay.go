@@ -75,6 +75,12 @@ func buildRequest(ctx context.Context, req evidence.Request) (*http.Request, err
 	}
 
 	for _, h := range req.Headers {
+		// net/http ignores Header["Host"] and sends req.Host; copy it
+		// across so a Host-header injection slot reaches the wire.
+		if strings.EqualFold(h.Name, "Host") {
+			httpReq.Host = h.Value
+			continue
+		}
 		httpReq.Header.Add(h.Name, h.Value)
 	}
 

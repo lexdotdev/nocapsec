@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"slices"
+	"time"
 
 	"github.com/lexdotdev/nocapsec/internal/evidence"
 	"github.com/lexdotdev/nocapsec/internal/httpx"
@@ -40,6 +41,15 @@ func (p timingProof) minDelta() int64 {
 	return p.MinMedianDeltaMS
 }
 
+// timeout bounds a single replay so a hung high arm can't block forever.
+// Zero means no per-replay bound (the client's own timeouts still apply).
+func (p timingProof) timeout() time.Duration {
+	if p.TimeoutMS <= 0 {
+		return 0
+	}
+	return time.Duration(p.TimeoutMS) * time.Millisecond
+}
+
 // timingSample is one timed-replay measurement.
 type timingSample struct {
 	label      string
@@ -59,7 +69,7 @@ func timingDifferential(ctx context.Context, env Env, ev timingEvidence, proof t
 	bundle := httpx.NewTimingClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL drives its own resolver timeout
 
 	reps := proof.reps()
-	samples, err := measureTimingWithClock(ctx, env.Clock, bundle, ev, reps)
+	samples, err := measureTimingWithClock(ctx, env.Clock, bundle, ev, reps, proof.timeout())
 	if err != nil {
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
@@ -92,7 +102,7 @@ func buildTimingArms(ev timingEvidence) ([]labeledReq, error) {
 }
 
 // measureTimingWithClock times arms, random order.
-func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.ClientBundle, ev timingEvidence, reps int) ([]timingSample, error) {
+func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.ClientBundle, ev timingEvidence, reps int, timeout time.Duration) ([]timingSample, error) {
 	// Build the three arms once, before scheduling.
 	reqs, err := buildTimingArms(ev)
 	if err != nil {
@@ -117,9 +127,15 @@ func measureTimingWithClock(ctx context.Context, clock Clock, bundle *httpx.Clie
 		}
 		lr := reqs[idx]
 
+		reqCtx := ctx
+		cancel := context.CancelFunc(func() {})
+		if timeout > 0 {
+			reqCtx, cancel = context.WithTimeout(ctx, timeout)
+		}
 		start := clock.Now()
-		capture, err := httpx.Replay(ctx, bundle, lr.req)
+		capture, err := httpx.Replay(reqCtx, bundle, lr.req)
 		elapsed := clock.Since(start)
+		cancel()
 		if err != nil {
 			return samples, err
 		}

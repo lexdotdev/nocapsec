@@ -4,8 +4,9 @@
   "description": "SSRF proven by a server-side OAST callback after the app fetches a URL you control.",
   "x-flags": "-oast (+ -internal for loopback/private targets)",
   "x-notes": [
-    "injection_location (NOT mutation_slots): { kind: \"query\", name: \"<param>\" } or { kind: \"json_body\", json_pointer: \"/a/b\" }.",
-    "The placeholder at the injection location is overwritten, but must exist (a real query param / JSON field).",
+    "injection_location (NOT mutation_slots): { kind: \"query\", name: \"<param>\" }, { kind: \"json_body\", json_pointer: \"/a/b\" }, or { kind: \"header\", name: \"X-Forwarded-Host\" }.",
+    "The placeholder at the injection location is overwritten, but must exist (a real query param / JSON field / declared header).",
+    "header injection targets Host / X-Forwarded-Host SSRF: the engine plants the scheme-stripped callback authority (host[:port]/cb/<id>), since such sinks build scheme://<header>. Do NOT inline credential headers (Cookie/Authorization) — those are rejected.",
     "expected_protocols (e.g. [\"http\"], [\"dns\"]) filters which callbacks count. Set require_source_not_verifier true."
   ],
   "type": "object",
@@ -30,8 +31,8 @@
           "additionalProperties": false,
           "required": ["kind"],
           "properties": {
-            "kind": { "enum": ["query", "json_body"] },
-            "name": { "type": "string", "description": "query parameter name (kind=query)" },
+            "kind": { "enum": ["query", "json_body", "header"] },
+            "name": { "type": "string", "description": "query parameter name (kind=query) or header name (kind=header)" },
             "json_pointer": { "type": "string", "description": "RFC-6901 pointer into the JSON body (kind=json_body)" }
           }
         },
@@ -66,6 +67,31 @@
           "url": "http://127.0.0.1:8080/proxy?url=http%3A%2F%2Fplaceholder.invalid"
         },
         "injection_location": { "kind": "query", "name": "url" },
+        "expected_protocols": ["http"]
+      },
+      "proof": {
+        "expected_signal": "oast_interaction",
+        "poll_window_seconds": 30,
+        "require_source_not_verifier": true
+      }
+    },
+    {
+      "finding_id": "ssrf-xforwarded-host",
+      "type": "ssrf.oast",
+      "target": {
+        "expected_origin": "http://127.0.0.1:8090",
+        "allowed_hosts": ["127.0.0.1"],
+        "allowed_schemes": ["http"],
+        "allowed_ports": [8090]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "request": {
+          "method": "GET",
+          "url": "http://127.0.0.1:8090/setup/prereq-check",
+          "headers": [{ "name": "X-Forwarded-Host", "value": "placeholder.invalid" }]
+        },
+        "injection_location": { "kind": "header", "name": "X-Forwarded-Host" },
         "expected_protocols": ["http"]
       },
       "proof": {

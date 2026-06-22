@@ -432,6 +432,77 @@ func TestIDORReadResourceIDExtraction(t *testing.T) {
 	}
 }
 
+// G2: the created id is nested (data.id) in the setup response. Without a
+// created_id_pointer the top-level heuristic falls back to the whole body and
+// the attack URL is wrong; with the pointer the engine extracts data.id and
+// the cross-user read verifies.
+func TestIDORReadNestedCreatedIDPointer(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodPost:
+			w.WriteHeader(http.StatusCreated)
+			// Nested + array-wrapped id, e.g. {"data":{"id":"res-nested-7"}}.
+			_, _ = w.Write([]byte(`{"status":"ok","data":{"id":"res-nested-7"}}`))
+		case r.Method == http.MethodGet && r.URL.Path == "/api/documents/res-nested-7":
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"title":"canary-testnonce"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	})
+
+	srv := httptest.NewServer(handler)
+	defer srv.Close()
+
+	_, port := serverAddr(t, srv)
+	ps := strconv.Itoa(port)
+	base := "http://app.example.com:" + ps
+	store := idorAuthStore(t)
+
+	ev, _ := json.Marshal(map[string]any{
+		"resource_owner_auth_state_id": "owner-session",
+		"attacker_auth_state_id":       "attacker-session",
+		"created_id_pointer":           "/data/id",
+		"setup_resource": map[string]string{
+			"method": "POST",
+			"url":    base + "/api/documents",
+			"body":   `{"title":"canary-{{nonce}}"}`,
+		},
+		"attack_request": map[string]string{
+			"method": "GET",
+			"url":    base + "/api/documents/{{created_resource_id}}",
+		},
+	})
+	proof, _ := json.Marshal(map[string]any{
+		"expected_marker":       "canary-{{nonce}}",
+		"require_owner_control": true,
+	})
+	job := validators.Job{
+		Finding: evidence.Finding{
+			FindingID: "test-idor-nested",
+			Type:      "idor.read",
+			Target: evidence.Target{
+				ExpectedOrigin: base,
+				AllowedHosts:   []string{"app.example.com"},
+				AllowedSchemes: []string{"http"},
+				AllowedPorts:   []int{port},
+			},
+			Evidence: ev,
+			Proof:    proof,
+		},
+		Nonce: "testnonce",
+	}
+
+	v, _ := validators.Lookup("idor.read")
+	res, err := v.Validate(context.Background(), job, idorEnv(t, srv, store))
+	if err != nil {
+		t.Fatalf("Validate: %v", err)
+	}
+	if res.Verdict != verdict.Verified {
+		t.Fatalf("verdict = %q, want verified (nested id via created_id_pointer)", res.Verdict)
+	}
+}
+
 // Verify auth headers are injected: owner token on setup, attacker token on attack.
 func TestIDORReadInjectsAuthHeaders(t *testing.T) {
 	var setupAuth, attackAuth string

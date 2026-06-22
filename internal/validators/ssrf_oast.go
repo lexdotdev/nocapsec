@@ -133,26 +133,36 @@ type ssrfOASTProof struct {
 	RequireSourceNotVerifier bool   `json:"require_source_not_verifier"`
 }
 
-// validSSRFInjectionLocation: json_body/query only.
+// validSSRFInjectionLocation: json_body/query/header.
 func validSSRFInjectionLocation(loc InjectionLocation) bool {
 	switch loc.Kind {
 	case kindJSONBody:
 		return loc.JSONPointer != ""
-	case kindQuery:
+	case kindQuery, kindHeader:
 		return loc.Name != ""
 	default:
 		return false
 	}
 }
 
-// injectOASTURL plants the OAST URL in the slot.
+// injectOASTURL plants the callback in the slot.
+// query/json_body get the full URL; a header gets it
+// scheme-stripped (Host sinks build scheme://<header>).
 func injectOASTURL(req evidence.Request, loc InjectionLocation, tok *oast.OASTToken) (evidence.Request, error) {
 	switch loc.Kind {
 	case kindJSONBody, kindQuery:
 		return injectValue(req, loc, tok.URLHTTPS)
+	case kindHeader:
+		return injectValue(req, loc, stripScheme(tok.URLHTTP))
 	default:
 		return evidence.Request{}, fmt.Errorf("unsupported injection kind %q", loc.Kind)
 	}
+}
+
+// stripScheme drops a leading http(s)://.
+func stripScheme(u string) string {
+	u = strings.TrimPrefix(u, "https://")
+	return strings.TrimPrefix(u, "http://")
 }
 
 func injectJSONBody(req evidence.Request, pointer, value string) (evidence.Request, error) {
