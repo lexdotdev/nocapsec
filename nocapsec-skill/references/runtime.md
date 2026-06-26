@@ -117,7 +117,7 @@ is filled for browser/redirect findings and is the first place to look on a `rej
 nocapsec proves a specific, bounded claim per type. Always state plainly what it did **not**
 establish. Treat these as blindspots and write them next to the finding:
 
-- **Unsupported class.** The vulnerability does not map to any of the 16 types (e.g. CSRF,
+- **Unsupported class.** The vulnerability does not map to any supported type (e.g. CSRF,
   business-logic, auth bypass via logic, deserialization RCE, race/TOCTOU, DoS, stored
   secrets). Deliver a manual `poc.py` and say nocapsec cannot verify it.
 - **Out-of-band only / human-in-the-loop.** Execution requires an admin to open a page, a

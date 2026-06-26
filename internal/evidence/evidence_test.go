@@ -82,6 +82,21 @@ func TestParseAcceptsValidFindings(t *testing.T) {
   "proof": {"accepted_signals": ["javascript_dialog"], "expected_message_contains": "VERIFIER_STORED_XSS_", "expected_execution_origin": "https://app.example.com", "timeout_ms": 5000}
 }`,
 
+		"ssti.stored (setup trigger observe)": `{
+  "finding_id": "ss-1", "type": "ssti.stored",
+  "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},
+  "evidence": {
+    "setup_request": {"method": "POST", "url": "https://app.example.com/admin/product", "body": "email_template=placeholder"},
+    "injection": {
+      "location": {"kind": "form", "name": "email_template"},
+      "payloads": {"control": "nocapsec-{{ssti_marker}}-literal", "ssti": "{{ {{ssti_marker}} }}"}
+    },
+    "trigger": [{"method": "POST", "url": "https://app.example.com/admin/service/activate"}],
+    "observe": {"method": "GET", "url": "https://app.example.com/admin/email-log/latest"}
+  },
+  "proof": {"expected_marker_in_candidate": true, "expected_marker_absent_in_control": true, "repetitions": 2}
+}`,
+
 		"sqli.time_based (base_request + injection)": `{
   "finding_id": "sq-1", "type": "sqli.time_based",
   "target": {"expected_origin": "https://app.example.com", "allowed_hosts": ["app.example.com"], "allowed_schemes": ["https"]},

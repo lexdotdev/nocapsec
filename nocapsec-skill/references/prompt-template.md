@@ -57,6 +57,7 @@ chosen type's evidence/proof schema and example before writing JSON.
 | In-band SQLi reading a named table                 | `sqli.union_extract` | `nocapsec doc sqli.union_extract` |
 | NoSQL operator-injection auth bypass               | `nosqli.auth_bypass` | `nocapsec doc nosqli.auth_bypass` |
 | Reflected server-side template injection           | `ssti.reflected` | `nocapsec doc ssti.reflected` |
+| Stored / multi-step server-side template injection  | `ssti.stored` | `nocapsec doc ssti.stored` |
 | CRLF / HTTP response splitting (header injection)   | `crlf.response_splitting` | `nocapsec doc crlf.response_splitting` |
 | Web cache poisoning (unkeyed input, private canary) | `cache_poisoning.canary` | `nocapsec doc cache_poisoning.canary` |
 | Command injection via timing                        | `command_injection.time_based` | `nocapsec doc command_injection.time_based` |

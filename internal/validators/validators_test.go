@@ -85,7 +85,7 @@ func TestAllValidatorsHaveCap(t *testing.T) {
 		"path_traversal.file_read", "xss.reflected", "xss.stored", "xss.blind",
 		"open_redirect", "sqli.time_based", "sqli.boolean_based",
 		"ssrf.oast", "xxe.oast", "command_injection.time_based",
-		"command_injection.oast", "idor.read",
+		"command_injection.oast", "idor.read", "ssti.stored",
 	} {
 		v, ok := validators.Lookup(typ)
 		if !ok {

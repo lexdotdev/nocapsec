@@ -12,13 +12,13 @@ type sstiReflected struct{}
 func (sstiReflected) Type() string    { return "ssti.reflected" }
 func (sstiReflected) Cap() Capability { return CapHTTPReplay }
 
-// Validate proves reflected template injection.
+// Validate proves reflected SSTI via contrast.
 func (sstiReflected) Validate(ctx context.Context, job Job, env Env) (Result, error) {
 	var ev sqliBooleanEvidence // base_request + injection
 	if err := json.Unmarshal(job.Finding.Evidence, &ev); err != nil {
 		return Result{Verdict: verdict.Invalid}, nil //nolint:nilerr // schema mismatch -> invalid
 	}
-	var proof sstiReflectedProof
+	var proof sstiProof
 	if err := json.Unmarshal(job.Finding.Proof, &proof); err != nil {
 		return Result{Verdict: verdict.Invalid}, nil //nolint:nilerr // schema mismatch -> invalid
 	}
@@ -37,7 +37,7 @@ func (sstiReflected) Validate(ctx context.Context, job Job, env Env) (Result, er
 
 	return Result{
 		Verdict: verdict.Verified,
-		Proof: proofJSON(sstiReflectedProofBlock{
+		Proof: proofJSON(sstiProofBlock{
 			ComputedMarker:        res.product,
 			Repetitions:           res.reps,
 			MarkerInCandidate:     true,
@@ -47,13 +47,13 @@ func (sstiReflected) Validate(ctx context.Context, job Job, env Env) (Result, er
 	}, nil
 }
 
-type sstiReflectedProof struct {
+type sstiProof struct {
 	ExpectedMarkerInCandidate     bool `json:"expected_marker_in_candidate"`
 	ExpectedMarkerAbsentInControl bool `json:"expected_marker_absent_in_control"`
 	Repetitions                   int  `json:"repetitions"`
 }
 
-type sstiReflectedProofBlock struct {
+type sstiProofBlock struct {
 	ComputedMarker        string `json:"computed_marker"`
 	Repetitions           int    `json:"repetitions"`
 	MarkerInCandidate     bool   `json:"marker_in_candidate"`

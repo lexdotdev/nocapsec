@@ -1,0 +1,106 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ssti.stored",
+  "description": "Stored Server-Side Template Injection proven by writing an engine-owned arithmetic marker into a stored template slot, triggering server-side rendering, and observing the computed value in a later response while a literal control does not.",
+  "x-flags": "(http — no extra flag; -authstate when auth.required)",
+  "x-notes": [
+    "The engine builds control and ssti setup arms by planting each payload value into injection.location of setup_request. The trigger and observe requests are replayed after each setup arm.",
+    "The ssti payload MUST contain the {{ssti_marker}} slot, wrapped in the target engine's own delimiters. Per run the engine substitutes {{ssti_marker}} with a fresh arithmetic expression A*B and requires the integer product to appear in the candidate observe response and be absent from the control observe response.",
+    "The control arm runs before the candidate arm to avoid candidate artifacts contaminating the control observation. Author observe so it reads the artifact produced by the most recent trigger, or use side_effects.cleanup.",
+    "This proves a stored template-evaluation channel reaches the observed response. It does not prove full RCE."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "ssti.stored" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["setup_request", "injection", "trigger", "observe"],
+      "properties": {
+        "setup_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "ssti"],
+              "properties": {
+                "ssti": { "type": "string", "pattern": "\\{\\{ssti_marker\\}\\}" }
+              }
+            }
+          }
+        },
+        "trigger": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/request" }
+        },
+        "observe": { "$ref": "#/$defs/request" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_marker_in_candidate", "expected_marker_absent_in_control", "repetitions"],
+      "properties": {
+        "expected_marker_in_candidate": { "type": "boolean" },
+        "expected_marker_absent_in_control": { "type": "boolean" },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "ssti-stored-product-email",
+      "type": "ssti.stored",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": true, "auth_state_id": "admin-session", "role": "admin" },
+      "evidence": {
+        "setup_request": {
+          "method": "PATCH",
+          "url": "https://app.example.com/admin/products/42",
+          "headers": [{ "name": "content-type", "value": "application/x-www-form-urlencoded" }],
+          "body": "email_template=placeholder"
+        },
+        "injection": {
+          "location": { "kind": "form", "name": "email_template" },
+          "payloads": {
+            "control": "nocapsec-{{ssti_marker}}-literal",
+            "ssti": "{{ {{ssti_marker}} }}"
+          }
+        },
+        "trigger": [
+          { "method": "POST", "url": "https://app.example.com/admin/services/99/actions/create" }
+        ],
+        "observe": { "method": "GET", "url": "https://app.example.com/admin/email-logs/latest" }
+      },
+      "proof": {
+        "expected_marker_in_candidate": true,
+        "expected_marker_absent_in_control": true,
+        "repetitions": 2
+      },
+      "side_effects": {
+        "cleanup": [
+          {
+            "method": "PATCH",
+            "url": "https://app.example.com/admin/products/42",
+            "headers": [{ "name": "content-type", "value": "application/x-www-form-urlencoded" }],
+            "body": "email_template="
+          }
+        ]
+      }
+    }
+  ]
+}

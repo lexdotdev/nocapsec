@@ -28,7 +28,7 @@ Use this skill when the task is "build a PoC / write an exploit / produce a noca
 finding" for a concrete vulnerability on a target you are authorized to test (pentest
 engagement, CTF, security research, your own app in an isolated workspace).
 
-If the vulnerability does **not** map to one of the 18 supported types (below), nocapsec
+If the vulnerability does **not** map to one of the supported types below, nocapsec
 cannot verify it. Still produce a manual PoC (`poc.py`) and record it as a **blindspot** —
 do not force a mismatched `type`.
 
@@ -50,6 +50,7 @@ engine validates against, so it never drifts from what the parser enforces.
 | `sqli.union_extract`            | In-band SQLi reading a NAMED table  | (http; `-authstate` if write/read needs login) | `nocapsec doc sqli.union_extract` |
 | `nosqli.auth_bypass`            | NoSQL operator-injection auth bypass | (http)          | `nocapsec doc nosqli.auth_bypass` |
 | `ssti.reflected`                | Reflected server-side template injection | (http)      | `nocapsec doc ssti.reflected` |
+| `ssti.stored`                   | Stored / multi-step server-side template injection | (http; `-authstate` if write/read needs login) | `nocapsec doc ssti.stored` |
 | `crlf.response_splitting`       | CRLF / HTTP response splitting | (http)        | `nocapsec doc crlf.response_splitting` |
 | `cache_poisoning.canary`        | Web cache poisoning (private-key canary) | (http) | `nocapsec doc cache_poisoning.canary` |
 | `command_injection.time_based`  | Time-based command injection| (timing)         | `nocapsec doc command_injection.time_based` |

@@ -1,0 +1,24 @@
+{
+  "finding_id": "paymenter-product-email-template-ssti",
+  "type": "ssti.stored",
+  "verdict": "verified",
+  "target_origin": "http://127.0.0.1:52650",
+  "proof": {
+    "computed_marker": "3309422091",
+    "repetitions": 2,
+    "marker_in_candidate": true,
+    "marker_absent_in_control": true
+  },
+  "policy": {
+    "scheme_ok": true,
+    "initial_origin_pinned": true,
+    "final_origin_ok": true,
+    "redirects": null
+  },
+  "artifacts": {
+    "evidence": "artifact://d3c2091880fa8ce34159c76139f7a718/evidence/7b273dc8f4118653",
+    "http_exchange": "artifact://d3c2091880fa8ce34159c76139f7a718/http_exchange/246d08b4348f8a5e",
+    "policy": "artifact://d3c2091880fa8ce34159c76139f7a718/policy/490d788d0403b11a"
+  },
+  "decided_at": "2026-06-26T13:27:39.984354+03:00"
+}
