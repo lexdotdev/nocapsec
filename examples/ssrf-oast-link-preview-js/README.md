@@ -30,7 +30,8 @@ PORT=8099 node server.js
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/ssrf-oast-link-preview-js
+nocapsec verify -internal -oast -oast-callback-host oast.localtest.me \
+  examples/ssrf-oast-link-preview-js/evidence.json
 ```
 
 ### The `localtest.me` detail

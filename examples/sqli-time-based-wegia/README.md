@@ -62,7 +62,7 @@ curl -s --get "$E" --data-urlencode 'almox=0 OR (SELECT 1 FROM (SELECT SLEEP(0))
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/sqli-time-based-wegia
+nocapsec verify -internal examples/sqli-time-based-wegia/evidence.json
 ```
 
 The evidence is one `base_request` plus an `injection` slot (`query` param `almox`)

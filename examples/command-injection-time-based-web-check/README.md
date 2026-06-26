@@ -49,7 +49,7 @@ curl -s -G http://127.0.0.1:3009/api/screenshot --data-urlencode 'url=http://127
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/command-injection-time-based-web-check
+nocapsec verify -internal examples/command-injection-time-based-web-check/evidence.json
 ```
 
 The evidence is one `base_request` plus an `injection` slot (`query` param `url`)

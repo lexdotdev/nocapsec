@@ -56,7 +56,7 @@ curl -s "$E" --data-urlencode 'query=SELECT 1 AS marker WHERE 1=2'   # -> false
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/sqli-boolean-based-wegia
+nocapsec verify -internal examples/sqli-boolean-based-wegia/evidence.json
 ```
 
 The evidence is one `base_request` plus an `injection` slot (`query` form field)

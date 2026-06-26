@@ -25,9 +25,10 @@ node bin/hekto.js serve poc --port 3100
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/open-redirect-hekto
+nocapsec verify -internal -browser -oast -oast-http-addr 127.0.0.1:39099 \
+  examples/open-redirect-hekto/evidence.json
 ```
 
-The example starts nocapsec's embedded OAST receiver on `127.0.0.1:39099`.
+The command starts nocapsec's embedded OAST receiver on `127.0.0.1:39099`.
 The path uses the engine-owned `{{oast_host}}` and nonce, and Hekto's vulnerable
 protocol-relative redirect sends the browser to that OAST origin.

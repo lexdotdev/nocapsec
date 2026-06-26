@@ -34,7 +34,7 @@ Sources:
 ## Reproduce
 
 The engine's OAST DNS receiver listens on a fixed loopback port (`127.0.0.1:15353`,
-set in `main.go`). On macOS, route the `oast.test` zone to it once via a resolver
+set via `-oast-dns-addr`). On macOS, route the `oast.test` zone to it once via a resolver
 file (this is the one privileged step — the receiver itself is unprivileged):
 
 ```bash
@@ -52,7 +52,8 @@ node server.js              # serves http://127.0.0.1:8095
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/command-injection-oast-genieacs
+nocapsec verify -internal -oast -oast-dns-addr 127.0.0.1:15353 \
+  examples/command-injection-oast-genieacs/evidence.json
 ```
 
 The engine starts its OAST receiver (DNS on `127.0.0.1:15353`), writes

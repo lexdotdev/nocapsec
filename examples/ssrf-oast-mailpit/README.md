@@ -20,7 +20,7 @@ go run . --listen 127.0.0.1:8025 --smtp 127.0.0.1:1025
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/ssrf-oast-mailpit
+nocapsec verify -internal -oast examples/ssrf-oast-mailpit/evidence.json
 ```
 
 The example starts an embedded OAST receiver and replaces the `url` query parameter with that callback URL. A verified report means Mailpit fetched it server-side via `/proxy`.

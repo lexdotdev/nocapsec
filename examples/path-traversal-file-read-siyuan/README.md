@@ -47,7 +47,7 @@ curl -s --path-as-is "http://127.0.0.1:6806/appearance/langs/../../../data/canar
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/path-traversal-file-read-siyuan
+nocapsec verify -internal examples/path-traversal-file-read-siyuan/evidence.json
 ```
 
 The engine builds both arms from one `base_request` by substituting each payload

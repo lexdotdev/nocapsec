@@ -19,7 +19,7 @@ node server.mjs
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/xss-reflected-dompurify
+nocapsec verify -internal -browser examples/xss-reflected-dompurify/evidence.json
 ```
 
 The example drives Chrome to `/render?html=...`. A verified report means the vulnerable DOMPurify instance preserved an attacker-controlled `onerror` handler and Chrome observed the JavaScript dialog.

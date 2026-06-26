@@ -15,14 +15,17 @@ trigger, and observe requests with the authenticated HTTP requests from that dep
 
 ## Reproduce
 
-From the `nocapsec` repo:
+Start the harness (no dependencies):
 
 ```bash
-go run ./examples/ssti-stored-paymenter-email
+python3 examples/ssti-stored-paymenter-email/app/server.py
 ```
 
-The example starts a local target and patches `evidence.json` from port `0` to the chosen
-listener port before verification.
+In another terminal from the `nocapsec` repo:
+
+```bash
+nocapsec verify -internal examples/ssti-stored-paymenter-email/evidence.json
+```
 
 The evidence has one `setup_request` plus an `injection` slot (`email_template` form field),
 one trigger request, and one observe request. The engine plants a literal control first,

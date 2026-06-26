@@ -34,8 +34,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt   # nicegui==
 In another terminal from the `nocapsec` repo (a real Chrome/Chromium is required):
 
 ```bash
-export NOCAPSEC_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-go run ./examples/xss-stored-nicegui
+nocapsec verify -internal -browser \
+  -chrome-path "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  examples/xss-stored-nicegui/evidence.json
 ```
 
 The example first replays the `POST /store` that persists the payload, then drives a

@@ -102,6 +102,7 @@ type wiring struct {
 	oastDNSAddr       string
 	oastDomain        string
 	oastAdvertiseHost string
+	oastCallbackHost  string
 	authFile          string
 	browser           bool
 	chromePath        string
@@ -133,7 +134,8 @@ func loadConfig(fs *flag.FlagSet, args []string) (config.Config, wiring) {
 	fs.StringVar(&w.oastHTTPAddr, "oast-http-addr", "127.0.0.1:0", "embedded OAST HTTP listen address")
 	fs.StringVar(&w.oastDNSAddr, "oast-dns-addr", "127.0.0.1:0", "embedded OAST DNS listen address")
 	fs.StringVar(&w.oastDomain, "oast-domain", "oast.test", "OAST callback domain suffix")
-	fs.StringVar(&w.oastAdvertiseHost, "oast-advertise-host", "127.0.0.1", "host advertised in OAST callbacks/DNS replies")
+	fs.StringVar(&w.oastAdvertiseHost, "oast-advertise-host", "127.0.0.1", "host advertised in DNS A replies")
+	fs.StringVar(&w.oastCallbackHost, "oast-callback-host", "", "OAST callback host in URLs (default: same as -oast-advertise-host)")
 	fs.StringVar(&w.authFile, "authstate", "", "auth-state JSON file (enables auth-backed validators)")
 	fs.BoolVar(&w.browser, "browser", false, "enable the headless browser runner")
 	fs.StringVar(&w.chromePath, "chrome-path", "", "browser binary path (default: auto-detect; or set NOCAPSEC_CHROME_PATH)")
@@ -170,9 +172,12 @@ func newEngine(cfg config.Config, w wiring, logger engine.Logger) (*nocapsec.Eng
 	var recv *oast.Receiver
 	if w.oast {
 		recv = oast.NewReceiver(w.oastDomain, w.oastAdvertiseHost)
-		// callback host the target can reach.
-		if w.oastAdvertiseHost != "" {
-			recv.SetCallbackHost(w.oastAdvertiseHost)
+		cbHost := w.oastAdvertiseHost
+		if w.oastCallbackHost != "" {
+			cbHost = w.oastCallbackHost
+		}
+		if cbHost != "" {
+			recv.SetCallbackHost(cbHost)
 		}
 		if err := recv.Start(w.oastHTTPAddr, w.oastDNSAddr); err != nil {
 			return nil, nil, fmt.Errorf("start oast receiver: %w", err)

@@ -2,10 +2,10 @@
   "finding_id": "paymenter-product-email-template-ssti",
   "type": "ssti.stored",
   "target": {
-    "expected_origin": "http://127.0.0.1:0",
+    "expected_origin": "http://127.0.0.1:8090",
     "allowed_hosts": ["127.0.0.1"],
     "allowed_schemes": ["http"],
-    "allowed_ports": [0]
+    "allowed_ports": [8090]
   },
   "auth": {
     "required": false
@@ -13,7 +13,7 @@
   "evidence": {
     "setup_request": {
       "method": "POST",
-      "url": "http://127.0.0.1:0/admin/products/42",
+      "url": "http://127.0.0.1:8090/admin/products/42",
       "headers": [
         {
           "name": "content-type",
@@ -35,12 +35,12 @@
     "trigger": [
       {
         "method": "POST",
-        "url": "http://127.0.0.1:0/admin/services/99/actions/create"
+        "url": "http://127.0.0.1:8090/admin/services/99/actions/create"
       }
     ],
     "observe": {
       "method": "GET",
-      "url": "http://127.0.0.1:0/admin/email-logs/latest"
+      "url": "http://127.0.0.1:8090/admin/email-logs/latest"
     }
   },
   "proof": {
@@ -52,7 +52,7 @@
     "cleanup": [
       {
         "method": "POST",
-        "url": "http://127.0.0.1:0/admin/products/42",
+        "url": "http://127.0.0.1:8090/admin/products/42",
         "headers": [
           {
             "name": "content-type",

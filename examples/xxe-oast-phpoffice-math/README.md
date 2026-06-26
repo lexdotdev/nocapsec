@@ -45,7 +45,7 @@ curl -s -X POST -H 'content-type: application/xml' \
 In another terminal from the `nocapsec` repo:
 
 ```bash
-go run ./examples/xxe-oast-phpoffice-math
+nocapsec verify -internal -oast examples/xxe-oast-phpoffice-math/evidence.json
 ```
 
 The example starts an embedded OAST receiver, rewrites the placeholder `SYSTEM` URL
