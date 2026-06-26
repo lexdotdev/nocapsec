@@ -13,7 +13,45 @@ For more info see the [How It Works](docs/How%20It%20Works.md) document.
 - **Go 1.26.1 or newer** — to build the binary.
 - **Chrome or Chromium** — only for browser-backed validators (reflected/stored XSS, open redirect). The rest of the engine runs without a browser.
 
-### Build
+### Install from GitHub Releases
+
+Download the latest release binary and add it to your `PATH`:
+
+> macOS (Apple Silicon)
+```sh
+curl -Lo nocapsec.tar.gz https://github.com/lexdotdev/nocapsec/releases/latest/download/nocapsec_0.1.0_darwin_arm64.tar.gz
+tar xzf nocapsec.tar.gz nocapsec
+sudo mv nocapsec /usr/local/bin/
+rm nocapsec.tar.gz
+```
+
+> macOS (Intel)
+```sh
+curl -Lo nocapsec.tar.gz https://github.com/lexdotdev/nocapsec/releases/latest/download/nocapsec_0.1.0_darwin_amd64.tar.gz
+tar xzf nocapsec.tar.gz nocapsec
+sudo mv nocapsec /usr/local/bin/
+rm nocapsec.tar.gz
+```
+
+> Linux (x86_64)
+```sh
+curl -Lo nocapsec.tar.gz https://github.com/lexdotdev/nocapsec/releases/latest/download/nocapsec_0.1.0_linux_amd64.tar.gz
+tar xzf nocapsec.tar.gz nocapsec
+sudo mv nocapsec /usr/local/bin/
+rm nocapsec.tar.gz
+```
+
+> Linux (arm64)
+```sh
+curl -Lo nocapsec.tar.gz https://github.com/lexdotdev/nocapsec/releases/latest/download/nocapsec_0.1.0_linux_arm64.tar.gz
+tar xzf nocapsec.tar.gz nocapsec
+sudo mv nocapsec /usr/local/bin/
+rm nocapsec.tar.gz
+```
+
+All release archives and checksums are available at [github.com/lexdotdev/nocapsec/releases](https://github.com/lexdotdev/nocapsec/releases).
+
+### Build from source
 
 ```sh
 git clone https://github.com/lexdotdev/nocapsec.git
@@ -21,7 +59,7 @@ cd nocapsec
 go build -o bin/nocapsec ./cmd/nocapsec
 ```
 
-Or install straight onto your `PATH`:
+Or install straight onto your `PATH` (requires Go):
 
 ```sh
 go install github.com/lexdotdev/nocapsec/cmd/nocapsec@latest
