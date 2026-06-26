@@ -57,6 +57,15 @@ bin/nocapsec verify -oast -internal ssrf.json
 
 The CLI prints the final report as JSON to stdout.
 
+### Current Finding Types
+
+- HTTP replay: `path_traversal.file_read`, `idor.read`, `nosqli.auth_bypass`,
+  `sqli.boolean_based`, `sqli.inband`, `sqli.union_extract`, `ssti.reflected`,
+  `crlf.response_splitting`, `cache_poisoning.canary`
+- Timing: `sqli.time_based`, `command_injection.time_based`
+- Browser: `xss.reflected`, `xss.stored`, `open_redirect`
+- OAST: `ssrf.oast`, `xxe.oast`, `command_injection.oast`, `xss.blind`
+
 ### HTTP Service
 
 Start:
@@ -103,7 +112,8 @@ and a stable `reason`.
 - Use exact requests. Do not describe reproduction steps in prose inside JSON.
 - Do not include raw credentials. Use `auth.auth_state_id`; pass credentials via `-authstate`.
 - Keep host, scheme, method, parameter locations, and payload syntax explicit.
-- Use mutation placeholders only where the proof rule allows them, such as `{{nonce}}`.
+- Use mutation placeholders only where the proof rule allows them, such as
+  `{{nonce}}`, `{{canary}}`, `{{cachebuster}}`, or OAST slots.
 - Add negative controls for differential proof types.
 - Set `target.allowed_hosts`, `target.allowed_schemes`, and `target.allowed_ports` narrowly.
 - For local testing, include `-internal` when the target is loopback or a private network.

@@ -16,7 +16,7 @@ nocapsec runs each finding through one fixed pipeline and returns a single termi
 
 The current engine registers these proof types:
 
-- HTTP replay: `path_traversal.file_read`, `idor.read`, `nosqli.auth_bypass`, `sqli.boolean_based`, `sqli.inband`, `sqli.union_extract`, `ssti.reflected`
+- HTTP replay: `path_traversal.file_read`, `idor.read`, `nosqli.auth_bypass`, `sqli.boolean_based`, `sqli.inband`, `sqli.union_extract`, `ssti.reflected`, `crlf.response_splitting`, `cache_poisoning.canary`
 - Timing: `sqli.time_based`, `command_injection.time_based`
 - Browser: `xss.reflected`, `xss.stored`, `open_redirect`
 - OAST: `ssrf.oast`, `xxe.oast`, `command_injection.oast`, `xss.blind`

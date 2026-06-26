@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "crlf.response_splitting",
+  "description": "CRLF / HTTP response splitting proven by an engine-owned nonce becoming a NEW parsed response header (header-line injection) in the candidate but not the benign control.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "The engine builds the candidate and control arms by planting each payloads value into injection.location of base_request; the arms differ only in that one slot.",
+    "The split payload MUST contain the {{nonce}} slot AND construct a new header line via CR LF, e.g. \"en\\r\\nX-Nocap-Split-{{nonce}}: 1\". Per run the engine substitutes {{nonce}} with a fresh 128-bit value and requires a PARSED candidate response header whose name carries that nonce (or whose value equals it) — and which is absent from the control. Body reflection cannot fake this: the signal is read from the response header set, not the body. Header folding cannot fake it either: a folded value never produces a new header name.",
+    "Use kind=query|form|json_body|json_operator. The header and url_token kinds reject CR/LF by design, so a CRLF payload there yields invalid — response splitting is proven through a reflected parameter, not a guarded request header.",
+    "This proves a response-header-injection primitive is reachable (an attacker controls a header the parser honors). It does not by itself prove cache poisoning, session fixation, or XSS via the split — record any downstream impact as a separate PoC-level claim."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "crlf.response_splitting" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["base_request", "injection"],
+      "properties": {
+        "base_request": { "$ref": "#/$defs/request" },
+        "injection": {
+          "allOf": [{ "$ref": "#/$defs/injection" }],
+          "properties": {
+            "payloads": {
+              "required": ["control", "split"],
+              "properties": {
+                "split": { "type": "string", "pattern": "\\{\\{nonce\\}\\}" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_split_header_in_candidate", "expected_split_header_absent_in_control", "repetitions"],
+      "properties": {
+        "expected_split_header_in_candidate": { "const": true },
+        "expected_split_header_absent_in_control": { "const": true },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "crlf-response-splitting-id",
+      "type": "crlf.response_splitting",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "base_request": { "method": "GET", "url": "https://app.example.com/set-lang?lang=en" },
+        "injection": {
+          "location": { "kind": "query", "name": "lang" },
+          "payloads": {
+            "control": "en",
+            "split": "en\r\nX-Nocap-Split-{{nonce}}: 1"
+          }
+        }
+      },
+      "proof": {
+        "expected_split_header_in_candidate": true,
+        "expected_split_header_absent_in_control": true,
+        "repetitions": 3
+      }
+    }
+  ]
+}

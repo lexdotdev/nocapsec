@@ -188,13 +188,12 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 		oastValue = tok.Domain
 	}
 
-	// Token mode scans the whole request.
-	// request so the surrounding payload survives.
+	// Token mode preserves surrounding payload.
 	switch strings.TrimSpace(slotTarget) {
 	case "{{oast_url}}":
-		return substituteOASTToken(req, "oast_url", tok.URLHTTPS), nil
+		return substituteRequestSlot(req, "oast_url", tok.URLHTTPS), nil
 	case "{{oast_host}}":
-		return substituteOASTToken(req, "oast_host", tok.Domain), nil
+		return substituteRequestSlot(req, "oast_host", tok.Domain), nil
 	}
 
 	if slotTarget == "xml_external_entity_url" {
@@ -211,8 +210,8 @@ func injectSlot(req evidence.Request, slotKey, slotTarget string, tok *oast.OAST
 	return injectValue(req, InjectionLocation{Kind: kindForm, Name: field}, oastValue)
 }
 
-// substituteOASTToken fills request slots.
-func substituteOASTToken(req evidence.Request, token, val string) evidence.Request {
+// substituteRequestSlot fills request slots.
+func substituteRequestSlot(req evidence.Request, token, val string) evidence.Request {
 	out := req
 	out.URL = replaceSlot(out.URL, token, val)
 	out.Body = replaceSlot(out.Body, token, val)

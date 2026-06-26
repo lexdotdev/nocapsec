@@ -1,0 +1,71 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "cache_poisoning.canary",
+  "description": "Web cache poisoning proven on a PRIVATE engine-owned cache key: an unkeyed input in the poison request plants an engine canary into a cached response, a later clean request (same key, no canary input) receives the canary, and a control on a different key does not.",
+  "x-flags": "(http — no extra flag)",
+  "x-notes": [
+    "Bounded, no-third-party-harm design. Each request MUST carry a {{cachebuster}} slot in the URL, body, or headers; the engine fills it with a fresh high-entropy private token, so the poisoned cache entry is keyed to a value no real client will ever request. Per repetition the engine uses a NEW private key for poison+clean and a DIFFERENT private key for the control. The poison_request MUST also carry a {{canary}} slot (in the unkeyed input — e.g. an X-Forwarded-Host header or a reflected, non-keyed parameter) that the engine fills with a 128-bit nonce.",
+    "The {{cachebuster}} token and the {{canary}} nonce are distinct and share no substring, so reflecting the cache buster cannot be mistaken for the canary. clean_request and control_request MUST NOT contain {{canary}} — they are victim-shaped fetches.",
+    "verified requires: poison succeeds; the clean fetch (same key, no canary input) returns the canary in its body or headers; the control fetch (different key) does not; stable across repetitions. This proves an unkeyed input is cached and served to a different request sharing the key — it does NOT assert a specific shared/global key is poisonable against real users. Promote that to a PoC-level claim only with operator-authorized evidence.",
+    "side_effects.cleanup literal requests run on every exit path. Because the keys are private and high-entropy, the only client that fetches them is the engine; entries otherwise expire by the cache TTL."
+  ],
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["finding_id", "type", "target", "evidence", "proof"],
+  "properties": {
+    "finding_id": { "type": "string", "minLength": 1 },
+    "type": { "const": "cache_poisoning.canary" },
+    "target": { "$ref": "#/$defs/target" },
+    "auth": { "$ref": "#/$defs/auth" },
+    "controls": { "type": "array", "items": { "$ref": "#/$defs/request" } },
+    "mutation_slots": { "$ref": "#/$defs/mutation_slots" },
+    "side_effects": { "$ref": "#/$defs/side_effects" },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["poison_request", "clean_request", "control_request"],
+      "properties": {
+        "poison_request": { "$ref": "#/$defs/request" },
+        "clean_request": { "$ref": "#/$defs/request" },
+        "control_request": { "$ref": "#/$defs/request" }
+      }
+    },
+    "proof": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected_canary_in_clean", "expected_canary_absent_in_control", "repetitions"],
+      "properties": {
+        "expected_canary_in_clean": { "const": true },
+        "expected_canary_absent_in_control": { "const": true },
+        "repetitions": { "type": "number" }
+      }
+    }
+  },
+  "examples": [
+    {
+      "finding_id": "cache-poisoning-canary-id",
+      "type": "cache_poisoning.canary",
+      "target": {
+        "expected_origin": "https://app.example.com",
+        "allowed_hosts": ["app.example.com"],
+        "allowed_schemes": ["https"],
+        "allowed_ports": [443]
+      },
+      "auth": { "required": false },
+      "evidence": {
+        "poison_request": {
+          "method": "GET",
+          "url": "https://app.example.com/home?cb={{cachebuster}}",
+          "headers": [{ "name": "X-Forwarded-Host", "value": "{{canary}}.nocap.example" }]
+        },
+        "clean_request": { "method": "GET", "url": "https://app.example.com/home?cb={{cachebuster}}" },
+        "control_request": { "method": "GET", "url": "https://app.example.com/home?cb={{cachebuster}}" }
+      },
+      "proof": {
+        "expected_canary_in_clean": true,
+        "expected_canary_absent_in_control": true,
+        "repetitions": 3
+      }
+    }
+  ]
+}

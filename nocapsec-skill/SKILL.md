@@ -1,6 +1,6 @@
 ---
 name: nocapsec-exploit
-description: Compose a proof-of-concept exploit for a given vulnerability in an authorized test target and emit it as a nocapsec finding (evidence.json) that the engine can deterministically re-verify. Use when asked to build a PoC, write an exploit, or produce nocapsec evidence/finding JSON for a vulnerability (XSS, SQLi, NoSQL injection, SSTI, SSRF, XXE, command injection, open redirect, path traversal, IDOR). Maps the bug to exactly one nocapsec validator type, fills the strict evidence/proof contract, and documents blindspots when runtime proof is not fully achievable.
+description: Compose a proof-of-concept exploit for a given vulnerability in an authorized test target and emit it as a nocapsec finding (evidence.json) that the engine can deterministically re-verify. Use when asked to build a PoC, write an exploit, or produce nocapsec evidence/finding JSON for a vulnerability (XSS, SQLi, NoSQL injection, SSTI, CRLF, cache poisoning, SSRF, XXE, command injection, open redirect, path traversal, IDOR). Maps the bug to exactly one nocapsec validator type, fills the strict evidence/proof contract, and documents blindspots when runtime proof is not fully achievable.
 ---
 
 # nocapsec exploit authoring
@@ -13,8 +13,8 @@ never "fixes up" your evidence. It does exactly one thing per finding:
 
 1. parse your finding JSON against a **strict** schema (unknown keys → `invalid`),
 2. enforce policy (origin pinning, host/scheme/port allowlist, SSRF guards),
-3. replay your **exact** requests, substituting only declared tokens (a fresh `{{nonce}}`,
-   an allocated OAST URL), and
+3. replay your **exact** requests, substituting only declared tokens (fresh `{{nonce}}` /
+   `{{canary}}`, `{{cachebuster}}`, or an allocated OAST URL), and
 4. apply **one deterministic proof rule** for the finding's `type`, returning a verdict:
    `verified`, `not_reproduced`, `inconclusive`, `rejected`, or `invalid`.
 
@@ -28,7 +28,7 @@ Use this skill when the task is "build a PoC / write an exploit / produce a noca
 finding" for a concrete vulnerability on a target you are authorized to test (pentest
 engagement, CTF, security research, your own app in an isolated workspace).
 
-If the vulnerability does **not** map to one of the 16 supported types (below), nocapsec
+If the vulnerability does **not** map to one of the 18 supported types (below), nocapsec
 cannot verify it. Still produce a manual PoC (`poc.py`) and record it as a **blindspot** —
 do not force a mismatched `type`.
 
@@ -50,6 +50,8 @@ engine validates against, so it never drifts from what the parser enforces.
 | `sqli.union_extract`            | In-band SQLi reading a NAMED table  | (http; `-authstate` if write/read needs login) | `nocapsec doc sqli.union_extract` |
 | `nosqli.auth_bypass`            | NoSQL operator-injection auth bypass | (http)          | `nocapsec doc nosqli.auth_bypass` |
 | `ssti.reflected`                | Reflected server-side template injection | (http)      | `nocapsec doc ssti.reflected` |
+| `crlf.response_splitting`       | CRLF / HTTP response splitting | (http)        | `nocapsec doc crlf.response_splitting` |
+| `cache_poisoning.canary`        | Web cache poisoning (private-key canary) | (http) | `nocapsec doc cache_poisoning.canary` |
 | `command_injection.time_based`  | Time-based command injection| (timing)         | `nocapsec doc command_injection.time_based` |
 | `command_injection.oast`        | OAST command injection      | `-oast`          | `nocapsec doc command_injection.oast` |
 | `ssrf.oast`                     | SSRF (OAST callback)        | `-oast` `-internal`* | `nocapsec doc ssrf.oast` |
@@ -75,10 +77,9 @@ verdict, blindspots) are in **[references/runtime.md](references/runtime.md)**.
 - **No improvisation budget.** The engine replays your request bytes as-is. Put the full,
   working payload in the request — the engine will not escalate, retry alternates, or
   change host/method/parameter/role.
-- **Tokens, not guesses.** Use the literal token `{{nonce}}` where the proof must observe a
-  unique value (XSS message, redirect final URL, IDOR marker). The engine generates the
-  value at run time; the proof checks the observed signal contains it. Do not hardcode a
-  "random" string — it will not match.
+- **Tokens, not guesses.** Use the literal token named by `nocapsec doc <type>` where
+  the proof must observe an engine value (`{{nonce}}`, `{{canary}}`, `{{cachebuster}}`,
+  or OAST slots). Do not hardcode a "random" string — it will not match.
 - **Credentials are referenced, never inlined.** Any `Cookie`, `Authorization`, or
   `Proxy-Authorization` header in a request → `invalid` (`inlined_credential`). Auth comes
   from an `auth_state_id` plus an `-authstate` file (see [references/runtime.md](references/runtime.md)).

@@ -20,11 +20,12 @@ you are authorized to attack; all runtime commands run there.
 ## Operating model — read before you start
 
 nocapsec is a **proof engine, not a scanner**. It will replay your exact requests, substitute
-only declared tokens (a fresh `{{nonce}}`, an allocated OAST URL), enforce a strict scope
-policy, and apply **one deterministic proof rule** for the finding's `type` — returning
-`verified`, `not_reproduced`, `inconclusive`, `rejected`, or `invalid`. It never improvises,
-retries alternate payloads, or "fixes up" your evidence. Therefore your finding must encode
-a complete, already-working exploit with precise acceptance criteria. Read
+only declared tokens (fresh `{{nonce}}` / `{{canary}}`, `{{cachebuster}}`, or an allocated
+OAST URL), enforce a strict scope policy, and apply **one deterministic proof rule** for the
+finding's `type` — returning `verified`, `not_reproduced`, `inconclusive`, `rejected`, or
+`invalid`. It never improvises, retries alternate payloads, or "fixes up" your evidence.
+Therefore your finding must encode a complete, already-working exploit with precise
+acceptance criteria. Read
 [envelope.md](envelope.md) for the shared structure, and run `nocapsec doc <type>` for your
 chosen type's evidence/proof schema and example before writing JSON.
 
@@ -56,6 +57,8 @@ chosen type's evidence/proof schema and example before writing JSON.
 | In-band SQLi reading a named table                 | `sqli.union_extract` | `nocapsec doc sqli.union_extract` |
 | NoSQL operator-injection auth bypass               | `nosqli.auth_bypass` | `nocapsec doc nosqli.auth_bypass` |
 | Reflected server-side template injection           | `ssti.reflected` | `nocapsec doc ssti.reflected` |
+| CRLF / HTTP response splitting (header injection)   | `crlf.response_splitting` | `nocapsec doc crlf.response_splitting` |
+| Web cache poisoning (unkeyed input, private canary) | `cache_poisoning.canary` | `nocapsec doc cache_poisoning.canary` |
 | Command injection via timing                        | `command_injection.time_based` | `nocapsec doc command_injection.time_based` |
 | Command injection via OAST callback                 | `command_injection.oast` | `nocapsec doc command_injection.oast` |
 | SSRF (server fetches a URL you control)             | `ssrf.oast` | `nocapsec doc ssrf.oast` |
