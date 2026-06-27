@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -61,15 +60,7 @@ func runCachePoison(t *testing.T, h http.Handler, ev func(port int) map[string]a
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("cache_poisoning.canary")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), cachePoisonJob(t, port, ev(port)), sstiEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
-	return res
+	return runValidate(t, "cache_poisoning.canary", cachePoisonJob(t, port, ev(port)), sstiEnv(t, srv))
 }
 
 // keyedCacheHandler simulates the vuln.
@@ -153,11 +144,7 @@ func TestCachePoisoningMissingCanaryInvalid(t *testing.T) {
 		Finding: evidence.Finding{FindingID: "t", Type: "cache_poisoning.canary", Evidence: ev, Proof: proof},
 		Nonce:   canaryNonce,
 	}
-	v, _ := validators.Lookup("cache_poisoning.canary")
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "cache_poisoning.canary", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", res.Verdict)
 	}
@@ -181,11 +168,7 @@ func TestCachePoisoningCanaryInCleanInvalid(t *testing.T) {
 		Finding: evidence.Finding{FindingID: "t", Type: "cache_poisoning.canary", Evidence: ev, Proof: proof},
 		Nonce:   canaryNonce,
 	}
-	v, _ := validators.Lookup("cache_poisoning.canary")
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "cache_poisoning.canary", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (clean must not carry the canary)", res.Verdict)
 	}

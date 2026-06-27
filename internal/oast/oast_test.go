@@ -37,12 +37,6 @@ func (c *fakeClock) Now() time.Time {
 	return c.now
 }
 
-func (c *fakeClock) Since(t time.Time) time.Duration {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now.Sub(t)
-}
-
 func (c *fakeClock) Advance(d time.Duration) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

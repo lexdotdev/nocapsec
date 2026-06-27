@@ -24,9 +24,6 @@ const (
 	Invalid       = verdict.Invalid
 )
 
-// ErrNotImplemented means a Task has no Run func.
-var ErrNotImplemented = engine.ErrNotImplemented
-
 // Config holds defaults + concurrency limits.
 type Config = engine.Config
 

@@ -80,18 +80,7 @@ func (xssStored) Validate(ctx context.Context, job Job, env Env) (Result, error)
 		return Result{Verdict: verdict.Inconclusive}, fmt.Errorf("xss.stored: browser: %w", err)
 	}
 
-	if navigatedExternal(result.Navigation, targetOrigin) {
-		return Result{Verdict: verdict.NotReproduced}, nil
-	}
-
-	if signal, ok := qualifyingSignal(result, pf, targetOrigin, job.Nonce); ok {
-		return Result{Verdict: verdict.Verified, Proof: proofJSON(xssProofBlock{
-			Signal:               signal,
-			ExecutionOrigin:      targetOrigin.String(),
-			MessageContainsNonce: true,
-		})}, nil
-	}
-	return Result{Verdict: verdict.NotReproduced}, nil
+	return xssVerdict(result, pf, targetOrigin, job.Nonce), nil
 }
 
 type xssStoredEvidence struct {
@@ -131,5 +120,3 @@ func runCleanup(ctx context.Context, env Env, reqs []evidence.Request) {
 		_, _ = httpx.Replay(ctx, bundle, req)
 	}
 }
-
-func init() { Register(xssStored{}) }

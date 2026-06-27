@@ -156,5 +156,3 @@ type cachePoisonProofBlock struct {
 	CanaryAbsentControl bool   `json:"canary_absent_in_control"`
 	PrivateKey          bool   `json:"private_cache_key"`
 }
-
-func init() { Register(cachePoisoning{}) }

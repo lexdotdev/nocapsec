@@ -2,6 +2,7 @@
 package config
 
 import (
+	"cmp"
 	"encoding/json"
 	"os"
 	"strconv"
@@ -122,32 +123,14 @@ func (c Config) ApplyFlags(addr string, poolHTTP, poolTiming, poolBrowser, poolO
 // withDefaults fills zero fields from Defaults().
 func (c Config) withDefaults() Config {
 	d := Defaults()
-	if c.ListenAddr == "" {
-		c.ListenAddr = d.ListenAddr
-	}
-	if c.Pools.HTTPReplay == 0 {
-		c.Pools.HTTPReplay = d.Pools.HTTPReplay
-	}
-	if c.Pools.Timing == 0 {
-		c.Pools.Timing = d.Pools.Timing
-	}
-	if c.Pools.Browser == 0 {
-		c.Pools.Browser = d.Pools.Browser
-	}
-	if c.Pools.OAST == 0 {
-		c.Pools.OAST = d.Pools.OAST
-	}
-	if c.Serve.ReadHeaderTimeout == 0 {
-		c.Serve.ReadHeaderTimeout = d.Serve.ReadHeaderTimeout
-	}
-	if c.Serve.ReadTimeout == 0 {
-		c.Serve.ReadTimeout = d.Serve.ReadTimeout
-	}
-	if c.Serve.WriteTimeout == 0 {
-		c.Serve.WriteTimeout = d.Serve.WriteTimeout
-	}
-	if c.Serve.IdleTimeout == 0 {
-		c.Serve.IdleTimeout = d.Serve.IdleTimeout
-	}
+	c.ListenAddr = cmp.Or(c.ListenAddr, d.ListenAddr)
+	c.Pools.HTTPReplay = cmp.Or(c.Pools.HTTPReplay, d.Pools.HTTPReplay)
+	c.Pools.Timing = cmp.Or(c.Pools.Timing, d.Pools.Timing)
+	c.Pools.Browser = cmp.Or(c.Pools.Browser, d.Pools.Browser)
+	c.Pools.OAST = cmp.Or(c.Pools.OAST, d.Pools.OAST)
+	c.Serve.ReadHeaderTimeout = cmp.Or(c.Serve.ReadHeaderTimeout, d.Serve.ReadHeaderTimeout)
+	c.Serve.ReadTimeout = cmp.Or(c.Serve.ReadTimeout, d.Serve.ReadTimeout)
+	c.Serve.WriteTimeout = cmp.Or(c.Serve.WriteTimeout, d.Serve.WriteTimeout)
+	c.Serve.IdleTimeout = cmp.Or(c.Serve.IdleTimeout, d.Serve.IdleTimeout)
 	return c
 }

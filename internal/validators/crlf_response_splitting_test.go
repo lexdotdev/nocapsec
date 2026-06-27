@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -76,14 +75,7 @@ func runCRLF(t *testing.T, h http.Handler, split string) validators.Result {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("crlf.response_splitting")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildCRLFJob(t, port, split), sstiEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "crlf.response_splitting", buildCRLFJob(t, port, split), sstiEnv(t, srv))
 	return res
 }
 
@@ -165,11 +157,7 @@ func TestCRLFResponseSplittingHeaderSlotInvalid(t *testing.T) {
 		},
 		Nonce: crlfNonce,
 	}
-	v, _ := validators.Lookup("crlf.response_splitting")
-	res, err := v.Validate(context.Background(), job, sstiEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "crlf.response_splitting", job, sstiEnv(t, srv))
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (header slot rejects CRLF)", res.Verdict)
 	}

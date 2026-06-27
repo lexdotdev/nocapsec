@@ -31,8 +31,3 @@ func (commandInjectionOAST) Validate(ctx context.Context, job Job, env Env) (Res
 		DefaultWindow:      120 * time.Second,
 	})
 }
-
-func init() {
-	Register(commandInjectionTiming{})
-	Register(commandInjectionOAST{})
-}

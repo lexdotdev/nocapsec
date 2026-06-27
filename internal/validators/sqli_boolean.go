@@ -152,5 +152,3 @@ type sqliBooleanProof struct {
 	Compare                []string `json:"compare"`
 	Repetitions            int      `json:"repetitions"`
 }
-
-func init() { Register(sqliBoolean{}) }

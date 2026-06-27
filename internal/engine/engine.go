@@ -2,6 +2,7 @@
 package engine
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -70,18 +71,10 @@ type Config struct {
 
 func (c Config) withDefaults() Config {
 	d := DefaultLimits()
-	if c.Limits.HTTPReplay == 0 {
-		c.Limits.HTTPReplay = d.HTTPReplay
-	}
-	if c.Limits.Timing == 0 {
-		c.Limits.Timing = d.Timing
-	}
-	if c.Limits.Browser == 0 {
-		c.Limits.Browser = d.Browser
-	}
-	if c.Limits.OAST == 0 {
-		c.Limits.OAST = d.OAST
-	}
+	c.Limits.HTTPReplay = cmp.Or(c.Limits.HTTPReplay, d.HTTPReplay)
+	c.Limits.Timing = cmp.Or(c.Limits.Timing, d.Timing)
+	c.Limits.Browser = cmp.Or(c.Limits.Browser, d.Browser)
+	c.Limits.OAST = cmp.Or(c.Limits.OAST, d.OAST)
 	if c.Resolver == nil {
 		c.Resolver = policy.NewSystemResolver()
 	}
@@ -98,6 +91,7 @@ func (c Config) withDefaults() Config {
 type Engine struct {
 	dispatcher         Dispatcher
 	jobs               *jobStore
+	registry           *validators.Registry
 	resolver           policy.Resolver
 	store              artifacts.ArtifactStore
 	authStore          authstate.Store
@@ -113,9 +107,14 @@ type Engine struct {
 // New wires the engine.
 func New(cfg Config) (*Engine, error) {
 	cfg = cfg.withDefaults()
+	registry, err := validators.DefaultRegistry()
+	if err != nil {
+		return nil, err
+	}
 	return &Engine{
 		dispatcher:         newDispatcher(cfg.Limits),
 		jobs:               newJobStore(),
+		registry:           registry,
 		resolver:           cfg.Resolver,
 		store:              cfg.Store,
 		authStore:          cfg.AuthStore,
@@ -156,29 +155,35 @@ func (e *Engine) Verify(ctx context.Context, raw []byte) (verdict.Report, error)
 	pe := e.buildEnforcer(finding)
 
 	if reason, policyErr := checkEvidencePolicy(finding, pe); policyErr != nil {
-		r := verdict.Reasoned(finding.FindingID, finding.Type, verdict.Rejected, reason).Stamp(e.clock.Now())
+		r := e.reasoned(finding, verdict.Rejected, reason)
 		r.TargetOrigin = finding.Target.ExpectedOrigin
 		r.Artifacts = artRefs
-		e.metrics.RecordVerdict(r.Verdict)
-		e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(r.Verdict))
-		return r, nil //nolint:nilerr // rejected verdict
+		return e.finish(r), nil //nolint:nilerr // rejected verdict
 	}
 
 	if reason := e.checkAuthIfRequired(ctx, finding); reason != "" {
-		r := verdict.Reasoned(finding.FindingID, finding.Type, verdict.Inconclusive, reason).Stamp(e.clock.Now())
+		r := e.reasoned(finding, verdict.Inconclusive, reason)
 		r.Artifacts = artRefs
-		e.metrics.RecordVerdict(r.Verdict)
-		e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(r.Verdict))
-		return r, nil
+		return e.finish(r), nil
 	}
 
 	report, err := e.planAndDispatch(ctx, finding, pe, raw, jobID, artRefs)
 	if err != nil {
 		return verdict.Report{}, err
 	}
-	e.metrics.RecordVerdict(report.Verdict)
-	e.logger.Info("verify_done", "finding_id", finding.FindingID, "verdict", string(report.Verdict))
-	return report, nil
+	return e.finish(report), nil
+}
+
+// reasoned builds a stamped terminal report for f.
+func (e *Engine) reasoned(f *evidence.Finding, v verdict.Verdict, reason string) verdict.Report {
+	return verdict.Reasoned(f.FindingID, f.Type, v, reason).Stamp(e.clock.Now())
+}
+
+// finish records terminal metrics.
+func (e *Engine) finish(r verdict.Report) verdict.Report {
+	e.metrics.RecordVerdict(r.Verdict)
+	e.logger.Info("verify_done", "finding_id", r.FindingID, "verdict", string(r.Verdict))
+	return r
 }
 
 // Metrics returns counters.
@@ -223,9 +228,9 @@ func (e *Engine) checkAuthIfRequired(ctx context.Context, f *evidence.Finding) s
 }
 
 func (e *Engine) planAndDispatch(ctx context.Context, finding *evidence.Finding, pe validators.PolicyEnforcer, raw []byte, jobID string, artRefs verdict.ArtifactRefs) (verdict.Report, error) {
-	v, ok := validators.Lookup(finding.Type)
+	v, ok := e.registry.Lookup(finding.Type)
 	if !ok {
-		return verdict.Reasoned(finding.FindingID, finding.Type, verdict.Invalid, "no_validator").Stamp(e.clock.Now()), nil
+		return e.reasoned(finding, verdict.Invalid, "no_validator"), nil
 	}
 
 	nonce, err := generateRandomHex()
@@ -256,7 +261,7 @@ func (e *Engine) planAndDispatch(ctx context.Context, finding *evidence.Finding,
 
 	e.metrics.RecordPool(v.Cap())
 	if dispErr := e.dispatcher.Dispatch(ctx, task); dispErr != nil {
-		r := verdict.Reasoned(finding.FindingID, finding.Type, verdict.Inconclusive, "dispatch_error").Stamp(e.clock.Now())
+		r := e.reasoned(finding, verdict.Inconclusive, "dispatch_error")
 		r.Artifacts = artRefs
 		return r, nil //nolint:nilerr // dispatch failure -> Inconclusive
 	}

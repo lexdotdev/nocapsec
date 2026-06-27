@@ -8,13 +8,11 @@ import (
 // Clock makes polling deterministic.
 type Clock interface {
 	Now() time.Time
-	Since(time.Time) time.Duration
 }
 
 type wallClock struct{}
 
-func (wallClock) Now() time.Time                  { return time.Now() }
-func (wallClock) Since(t time.Time) time.Duration { return time.Since(t) }
+func (wallClock) Now() time.Time { return time.Now() }
 
 // PollConfig tunes the polling loop.
 type PollConfig struct {

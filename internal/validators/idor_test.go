@@ -162,19 +162,11 @@ func TestIDORReadVerified(t *testing.T) {
 	_, port := serverAddr(t, srv)
 	store := idorAuthStore(t)
 
-	v, ok := validators.Lookup("idor.read")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-
 	job := buildIDORJob(t, port, "abc123")
 	env := idorEnv(t, srv, store)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -202,15 +194,11 @@ func TestIDORReadNotReproduced(t *testing.T) {
 	_, port := serverAddr(t, srv)
 	store := idorAuthStore(t)
 
-	v, _ := validators.Lookup("idor.read")
 	job := buildIDORJob(t, port, "nonce456")
 	env := idorEnv(t, srv, store)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
@@ -228,15 +216,11 @@ func TestIDORReadSetupFails(t *testing.T) {
 	_, port := serverAddr(t, srv)
 	store := idorAuthStore(t)
 
-	v, _ := validators.Lookup("idor.read")
 	job := buildIDORJob(t, port, "nonce789")
 	env := idorEnv(t, srv, store)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}
@@ -244,8 +228,6 @@ func TestIDORReadSetupFails(t *testing.T) {
 
 // Same auth state for both roles -> invalid.
 func TestIDORReadSameAuthInvalid(t *testing.T) {
-	v, _ := validators.Lookup("idor.read")
-
 	ev, _ := json.Marshal(map[string]any{
 		"resource_owner_auth_state_id": "same-id",
 		"attacker_auth_state_id":       "same-id",
@@ -267,11 +249,8 @@ func TestIDORReadSameAuthInvalid(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
@@ -279,8 +258,6 @@ func TestIDORReadSameAuthInvalid(t *testing.T) {
 
 // Missing auth store -> inconclusive.
 func TestIDORReadNoAuthStore(t *testing.T) {
-	v, _ := validators.Lookup("idor.read")
-
 	ev, _ := json.Marshal(map[string]any{
 		"resource_owner_auth_state_id": "owner",
 		"attacker_auth_state_id":       "attacker",
@@ -302,11 +279,8 @@ func TestIDORReadNoAuthStore(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}
@@ -314,7 +288,6 @@ func TestIDORReadNoAuthStore(t *testing.T) {
 
 // Bad evidence JSON -> invalid.
 func TestIDORReadBadEvidence(t *testing.T) {
-	v, _ := validators.Lookup("idor.read")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-bad-ev",
@@ -325,11 +298,8 @@ func TestIDORReadBadEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
@@ -360,7 +330,6 @@ func TestIDORReadExpiredAuth(t *testing.T) {
 		t.Fatalf("Put: %v", err)
 	}
 
-	v, _ := validators.Lookup("idor.read")
 	ev, _ := json.Marshal(map[string]any{
 		"resource_owner_auth_state_id": "owner-session",
 		"attacker_auth_state_id":       "attacker-session",
@@ -385,11 +354,8 @@ func TestIDORReadExpiredAuth(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	res, err := v.Validate(ctx, job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}
@@ -417,15 +383,11 @@ func TestIDORReadResourceIDExtraction(t *testing.T) {
 	_, port := serverAddr(t, srv)
 	store := idorAuthStore(t)
 
-	v, _ := validators.Lookup("idor.read")
 	job := buildIDORJob(t, port, "testnonce")
 	env := idorEnv(t, srv, store)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "idor.read", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -489,11 +451,7 @@ func TestIDORReadNestedCreatedIDPointer(t *testing.T) {
 		Nonce: "testnonce",
 	}
 
-	v, _ := validators.Lookup("idor.read")
-	res, err := v.Validate(context.Background(), job, idorEnv(t, srv, store))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "idor.read", job, idorEnv(t, srv, store))
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (nested id via created_id_pointer)", res.Verdict)
 	}
@@ -554,11 +512,7 @@ func TestIDORReadUnresolvedPointerInconclusive(t *testing.T) {
 		Nonce: "testnonce",
 	}
 
-	v, _ := validators.Lookup("idor.read")
-	res, err := v.Validate(context.Background(), job, idorEnv(t, srv, store))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "idor.read", job, idorEnv(t, srv, store))
 	if res.Verdict != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive (unresolved pointer is authoring error)", res.Verdict)
 	}
@@ -588,14 +542,10 @@ func TestIDORReadInjectsAuthHeaders(t *testing.T) {
 	_, port := serverAddr(t, srv)
 	store := idorAuthStore(t)
 
-	v, _ := validators.Lookup("idor.read")
 	job := buildIDORJob(t, port, "auth-nonce")
 	env := idorEnv(t, srv, store)
 
-	_, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	runValidate(t, "idor.read", job, env)
 	if setupAuth != "owner-secret" {
 		t.Fatalf("setup auth = %q, want owner-secret", setupAuth)
 	}

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"maps"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/google/jsonschema-go/jsonschema"
@@ -127,12 +127,7 @@ func validateInstance(typ string, instance any) error {
 
 // schemaTypes returns sorted types with a schema.
 func schemaTypes() []string {
-	out := make([]string, 0, len(schemaRegistry))
-	for t := range schemaRegistry {
-		out = append(out, t)
-	}
-	sort.Strings(out)
-	return out
+	return slices.Sorted(maps.Keys(schemaRegistry))
 }
 
 // schemaDoc returns a type's schema document.

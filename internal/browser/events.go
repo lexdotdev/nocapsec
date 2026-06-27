@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"net/url"
+	"slices"
 	"sync"
 
 	"github.com/chromedp/cdproto/network"
@@ -94,15 +95,7 @@ func (ec *eventCollector) recordNet(e *network.EventRequestWillBeSent) {
 func (ec *eventCollector) snapshot() ([]NavEvent, []DialogEvent, []ConsoleEvent, []NetEvent) {
 	ec.mu.Lock()
 	defer ec.mu.Unlock()
-	navs := make([]NavEvent, len(ec.navs))
-	copy(navs, ec.navs)
-	dialogs := make([]DialogEvent, len(ec.dialogs))
-	copy(dialogs, ec.dialogs)
-	console := make([]ConsoleEvent, len(ec.console))
-	copy(console, ec.console)
-	netEvts := make([]NetEvent, len(ec.netEvts))
-	copy(netEvts, ec.netEvts)
-	return navs, dialogs, console, netEvts
+	return slices.Clone(ec.navs), slices.Clone(ec.dialogs), slices.Clone(ec.console), slices.Clone(ec.netEvts)
 }
 
 // originFromFrameURL returns origin.

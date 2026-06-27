@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -27,7 +25,7 @@ func fakeOAST() *oast.Fake {
 
 func redirectJob(t *testing.T, port int, nonce, externalOrigin string) validators.Job {
 	t.Helper()
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
 			"method": "GET",
@@ -107,14 +105,11 @@ func originOf(raw string) string {
 }
 
 func TestOpenRedirectVerified(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "redir123"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
@@ -133,30 +128,19 @@ func TestOpenRedirectVerified(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, ok := validators.Lookup("open_redirect")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
 }
 
 func TestOpenRedirectVerifiedNetworkTransition(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "netredir"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
@@ -178,25 +162,18 @@ func TestOpenRedirectVerifiedNetworkTransition(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
 }
 
 func TestOpenRedirectEncodedNonceSlot(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "encodedslot"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
@@ -224,25 +201,18 @@ func TestOpenRedirectEncodedNonceSlot(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "open_redirect", job, env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
 }
 
 func TestOpenRedirectVerifiedOASTHostSlot(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "hostslot"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
@@ -271,21 +241,14 @@ func TestOpenRedirectVerifiedOASTHostSlot(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "open_redirect", job, env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
 }
 
 func TestOpenRedirectNotReproduced_NoTransition(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "notrans"
@@ -307,26 +270,19 @@ func TestOpenRedirectNotReproduced_NoTransition(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (no transition)", result)
 	}
 }
 
 func TestOpenRedirectNotReproduced_NonceMissing(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "missing_nonce"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	// Final URL does not contain the nonce.
@@ -346,26 +302,19 @@ func TestOpenRedirectNotReproduced_NonceMissing(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (nonce missing)", result)
 	}
 }
 
 func TestOpenRedirectNotReproduced_FinalOriginWrong(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "wrongfinal"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	// Final URL lands on target, not external.
@@ -384,26 +333,19 @@ func TestOpenRedirectNotReproduced_FinalOriginWrong(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (final origin wrong)", result)
 	}
 }
 
 func TestOpenRedirectRejected_JavascriptScheme(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "jsredir"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	ev, _ := json.Marshal(map[string]any{
@@ -448,26 +390,19 @@ func TestOpenRedirectRejected_JavascriptScheme(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "open_redirect", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected (javascript: scheme)", result)
 	}
 }
 
 func TestOpenRedirectRejected_DataScheme(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "dataredir"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	ev, _ := json.Marshal(map[string]any{
@@ -512,26 +447,19 @@ func TestOpenRedirectRejected_DataScheme(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "open_redirect", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected (data: scheme)", result)
 	}
 }
 
 func TestOpenRedirectRejected_FinalJavascriptScheme(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "finjsredir"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
@@ -549,22 +477,15 @@ func TestOpenRedirectRejected_FinalJavascriptScheme(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected (final javascript: scheme)", result)
 	}
 }
 
 func TestOpenRedirectInconclusive_BrowserError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "browsererr"
@@ -592,7 +513,6 @@ func TestOpenRedirectInconclusive_BrowserError(t *testing.T) {
 }
 
 func TestOpenRedirectInvalid_BadEvidence(t *testing.T) {
-	v, _ := validators.Lookup("open_redirect")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-bad-ev",
@@ -603,18 +523,14 @@ func TestOpenRedirectInvalid_BadEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "open_redirect", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
 }
 
 func TestOpenRedirectInvalid_BadOrigin(t *testing.T) {
-	v, _ := validators.Lookup("open_redirect")
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint":              map[string]string{"method": "GET", "url": "http://a/b"},
 		"expected_initial_origin": "not-a-url",
@@ -633,24 +549,18 @@ func TestOpenRedirectInvalid_BadOrigin(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "open_redirect", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
 }
 
 func TestOpenRedirectInvalid_MissingOASTSlot(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint":              map[string]string{"method": "GET", "url": origin + "/login?next=http://evil.example.com/"},
 		"redirect_parameter":      "next",
@@ -673,21 +583,14 @@ func TestOpenRedirectInvalid_MissingOASTSlot(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "open_redirect", job, env)
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", res.Verdict)
 	}
 }
 
 func TestOpenRedirectNotReproduced_NoNavEvents(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "nonav"
@@ -705,26 +608,19 @@ func TestOpenRedirectNotReproduced_NoNavEvents(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (no nav events)", result)
 	}
 }
 
 func TestOpenRedirectNotReproduced_ExceedsMaxHops(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "maxhops"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	// Redirect chain exceeds max_hops.
@@ -776,26 +672,19 @@ func TestOpenRedirectNotReproduced_ExceedsMaxHops(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "open_redirect", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (exceeded max hops)", result)
 	}
 }
 
 func TestOpenRedirectVerified_MultiHop(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "multihop"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	externalOrigin := "http://evil.example.com:8080"
 
 	// target -> target -> external, within max_hops=5
@@ -816,12 +705,8 @@ func TestOpenRedirectVerified_MultiHop(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("open_redirect")
-	res, err := v.Validate(context.Background(), redirectJob(t, port, nonce, externalOrigin), env)
+	res := runValidate(t, "open_redirect", redirectJob(t, port, nonce, externalOrigin), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (multi-hop)", result)
 	}

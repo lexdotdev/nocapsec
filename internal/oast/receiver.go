@@ -74,18 +74,24 @@ func (r *Receiver) HTTPAddr() string { return r.httpAddr }
 // DNSAddr returns the bound DNS addr.
 func (r *Receiver) DNSAddr() string { return r.dnsAddr }
 
+// callbackBase applies callbackHost.
+func (r *Receiver) callbackBase() string {
+	if r.callbackHost == "" {
+		return r.httpAddr
+	}
+	if _, port, err := net.SplitHostPort(r.httpAddr); err == nil {
+		return net.JoinHostPort(r.callbackHost, port)
+	}
+	return r.httpAddr
+}
+
 func (r *Receiver) NewInteraction(_ context.Context, purpose string) (*OASTToken, error) {
 	corrID, err := randomCorrelationID()
 	if err != nil {
 		return nil, err
 	}
 	now := r.clock.Now()
-	cbHost := r.httpAddr
-	if r.callbackHost != "" {
-		if _, port, err := net.SplitHostPort(r.httpAddr); err == nil {
-			cbHost = net.JoinHostPort(r.callbackHost, port)
-		}
-	}
+	cbHost := r.callbackBase()
 	cb := fmt.Sprintf("http://%s/cb/%s", cbHost, corrID)
 	redir := fmt.Sprintf("http://%s/r/%s", cbHost, corrID)
 	return &OASTToken{
@@ -155,13 +161,7 @@ func (r *Receiver) handleHTTP(w http.ResponseWriter, req *http.Request) {
 	case strings.HasPrefix(req.URL.Path, "/r/"):
 		// Only /cb/ records proof.
 		corrID := strings.SplitN(strings.TrimPrefix(req.URL.Path, "/r/"), "/", 2)[0]
-		cbHost := r.httpAddr
-		if r.callbackHost != "" {
-			if _, port, err := net.SplitHostPort(r.httpAddr); err == nil {
-				cbHost = net.JoinHostPort(r.callbackHost, port)
-			}
-		}
-		dest := fmt.Sprintf("http://%s/cb/%s", cbHost, corrID)
+		dest := fmt.Sprintf("http://%s/cb/%s", r.callbackBase(), corrID)
 		http.Redirect(w, req, dest, http.StatusFound)
 
 	default:

@@ -18,5 +18,3 @@ func (xssBlind) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		DefaultWindow:      900 * time.Second,
 	})
 }
-
-func init() { Register(xssBlind{}) }

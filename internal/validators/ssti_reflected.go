@@ -59,5 +59,3 @@ type sstiProofBlock struct {
 	MarkerInCandidate     bool   `json:"marker_in_candidate"`
 	MarkerAbsentInControl bool   `json:"marker_absent_in_control"`
 }
-
-func init() { Register(sstiReflected{}) }

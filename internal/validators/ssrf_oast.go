@@ -30,7 +30,7 @@ func (ssrfOAST) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Rejected}, nil
 	}
 
-	tok, v := allocateSSRFToken(ctx, env)
+	tok, v := allocateToken(ctx, env, "ssrf")
 	if v != "" {
 		return Result{Verdict: v}, nil
 	}
@@ -40,7 +40,14 @@ func (ssrfOAST) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, err
 	}
 
-	return ssrfPollAndAttribute(ctx, env, job, ev, proof, tok), nil
+	return oastPollAndEvaluate(ctx, env, job, tok, oastProof{
+		ExpectedSignal:    proof.ExpectedSignal,
+		PollWindowSeconds: proof.PollWindowSeconds,
+	}, oastOpts{
+		RequireAttribution: true,
+		DefaultWindow:      120 * time.Second,
+		ExpectedProtocols:  ev.ExpectedProtocols,
+	}), nil
 }
 
 func parseSSRFEvidence(job Job) (ssrfOASTEvidence, ssrfOASTProof, verdict.Verdict) {
@@ -61,17 +68,6 @@ func parseSSRFEvidence(job Job) (ssrfOASTEvidence, ssrfOASTProof, verdict.Verdic
 	return ev, proof, ""
 }
 
-func allocateSSRFToken(ctx context.Context, env Env) (*oast.OASTToken, verdict.Verdict) {
-	if env.OAST == nil {
-		return nil, verdict.Inconclusive
-	}
-	tok, err := env.OAST.NewInteraction(ctx, "ssrf")
-	if err != nil {
-		return nil, verdict.Inconclusive
-	}
-	return tok, ""
-}
-
 // ssrfReplay injects the OAST URL and sends it.
 func ssrfReplay(ctx context.Context, env Env, ev ssrfOASTEvidence, tok *oast.OASTToken) error {
 	req, err := injectOASTURL(ev.Request, ev.InjectionLocation, tok, ev.ViaRedirect)
@@ -81,44 +77,6 @@ func ssrfReplay(ctx context.Context, env Env, ev ssrfOASTEvidence, tok *oast.OAS
 	bundle := httpx.NewClient(env.Policy.Checker()) //nolint:contextcheck // CheckURL owns timeout
 	_, err = httpx.Replay(ctx, bundle, req)
 	return err
-}
-
-func ssrfPollAndAttribute(
-	ctx context.Context, env Env, job Job,
-	ev ssrfOASTEvidence, proof ssrfOASTProof, tok *oast.OASTToken,
-) Result {
-	window := time.Duration(proof.PollWindowSeconds) * time.Second
-	pollCfg := oastPollConfig(env, window, 120*time.Second)
-	clock := env.Clock
-	if clock == nil {
-		clock = WallClock{}
-	}
-
-	result, err := oast.PollUntilMatch(ctx, env.OAST, tok.CorrelationID, tok.CreatedAt, pollCfg, clock)
-	if err != nil {
-		return Result{Verdict: verdict.Inconclusive}
-	}
-	if result.Expired {
-		return Result{Verdict: verdict.NotReproduced}
-	}
-
-	protocols := ev.ExpectedProtocols
-	if len(protocols) == 0 {
-		protocols = tok.ExpectedProtocols
-	}
-	matched := oast.FilterByProtocol(result.Interactions, protocols)
-	if len(matched) == 0 {
-		return Result{Verdict: verdict.NotReproduced}
-	}
-
-	// Attribution: require target infra, not verifier.
-	targetIPs := resolveTargetIPs(env, job)
-	qualified := oast.RequireSourceNotVerifier(matched, targetIPs, verifierUA())
-	if len(qualified) == 0 {
-		return Result{Verdict: verdict.NotReproduced}
-	}
-
-	return Result{Verdict: verdict.Verified, Proof: proofJSON(attributedOASTProof(qualified[0]))}
 }
 
 type ssrfOASTEvidence struct {
@@ -284,5 +242,3 @@ func resolveTargetIPs(env Env, job Job) []string {
 
 // verifierUA is the UA substring of the verifier.
 func verifierUA() string { return "HeadlessChrome" }
-
-func init() { Register(ssrfOAST{}) }

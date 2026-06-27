@@ -16,5 +16,3 @@ func (sqliTiming) Validate(ctx context.Context, job Job, env Env) (Result, error
 	}
 	return timingDifferential(ctx, env, ev, proof)
 }
-
-func init() { Register(sqliTiming{}) }

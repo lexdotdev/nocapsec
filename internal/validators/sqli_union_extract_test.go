@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -105,14 +104,7 @@ func vulnerableExtractApp(leakControl bool, registerStatus int) http.Handler {
 func runUnionExtract(t *testing.T, srv *httptest.Server) verdict.Verdict {
 	t.Helper()
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("sqli.union_extract")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildUnionExtractJob(t, port), unionExtractEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.union_extract", buildUnionExtractJob(t, port), unionExtractEnv(t, srv))
 	return res.Verdict
 }
 
@@ -161,7 +153,6 @@ func TestSQLiUnionExtractSetupFailsInconclusive(t *testing.T) {
 
 // Missing nonce slot is invalid.
 func TestSQLiUnionExtractMissingNonceInvalid(t *testing.T) {
-	v, _ := validators.Lookup("sqli.union_extract")
 	ev, _ := json.Marshal(map[string]any{
 		"setup_resource": map[string]any{
 			"method": "POST", "url": "http://app.example.com/api/auth/register",
@@ -181,10 +172,7 @@ func TestSQLiUnionExtractMissingNonceInvalid(t *testing.T) {
 		Finding: evidence.Finding{FindingID: "t", Type: "sqli.union_extract", Evidence: ev, Proof: proof},
 		Nonce:   extractNonce,
 	}
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.union_extract", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (no {{nonce}} in setup)", res.Verdict)
 	}

@@ -19,10 +19,8 @@ func ClassifySource(ix Interaction, targetIPs []string, verifierUA string) Sourc
 	if verifierUA != "" && strings.Contains(ix.UserAgent, verifierUA) {
 		return SourceVerifierBrowser
 	}
-	for _, s := range targetIPs {
-		if ix.SourceIP == s {
-			return SourceTargetInfra
-		}
+	if slices.Contains(targetIPs, ix.SourceIP) {
+		return SourceTargetInfra
 	}
 	return SourceNoise
 }

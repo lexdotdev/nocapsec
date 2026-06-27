@@ -75,5 +75,3 @@ type sqliInbandProofBlock struct {
 	MarkerInInband        bool   `json:"marker_in_inband"`
 	MarkerAbsentInControl bool   `json:"marker_absent_in_control"`
 }
-
-func init() { Register(sqliInband{}) }

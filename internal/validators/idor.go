@@ -49,7 +49,7 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 
 	setupReq := ev.SetupResource
 	setupReq.Body = replaceNonceSlot(setupReq.Body, job.Nonce)
-	injectCredHeaders(&setupReq, ownerCreds)
+	applyCreds(&setupReq, ownerCreds)
 
 	setupCap, err := httpx.Replay(ctx, bundle, setupReq)
 	if err != nil {
@@ -66,7 +66,7 @@ func (idorRead) Validate(ctx context.Context, job Job, env Env) (Result, error) 
 		return Result{Verdict: verdict.Inconclusive}, nil
 	}
 	attackReq.URL = replaceResourceIDSlot(attackReq.URL, resourceID)
-	injectCredHeaders(&attackReq, attackerCreds)
+	applyCreds(&attackReq, attackerCreds)
 
 	attackCap, err := httpx.Replay(ctx, bundle, attackReq)
 	if err != nil {
@@ -115,13 +115,6 @@ type idorReadEvidence struct {
 type idorReadProof struct {
 	ExpectedMarker      string `json:"expected_marker"`
 	RequireOwnerControl bool   `json:"require_owner_control"`
-}
-
-// injectCredHeaders appends auth headers.
-func injectCredHeaders(req *evidence.Request, creds *authstate.Credentials) {
-	for k, v := range creds.Headers {
-		req.Headers = append(req.Headers, evidence.Header{Name: k, Value: v})
-	}
 }
 
 // loadCreds checks auth-state expiry then creds.
@@ -203,5 +196,3 @@ func extractResourceIDAt(body []byte, pointer string) string {
 		return ""
 	}
 }
-
-func init() { Register(idorRead{}) }

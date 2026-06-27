@@ -157,5 +157,3 @@ type sqliUnionExtractProofBlock struct {
 	MarkerInExtract       bool   `json:"marker_in_extract"`
 	MarkerAbsentInControl bool   `json:"marker_absent_in_control"`
 }
-
-func init() { Register(sqliUnionExtract{}) }

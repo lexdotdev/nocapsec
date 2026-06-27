@@ -41,7 +41,7 @@ func (r *recordingBrowser) Run(_ context.Context, job browser.BrowserJob) (brows
 
 func reflectedJob(t *testing.T, port int, nonce string) validators.Job {
 	t.Helper()
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	ev, _ := json.Marshal(map[string]any{
 		"entrypoint": map[string]string{
 			"method": "GET",
@@ -77,14 +77,11 @@ func reflectedJob(t *testing.T, port int, nonce string) validators.Job {
 }
 
 func TestXSSReflectedVerified_Dialog(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "abc123"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search?q=payload"}},
@@ -103,30 +100,19 @@ func TestXSSReflectedVerified_Dialog(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, ok := validators.Lookup("xss.reflected")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
 }
 
 func TestXSSReflectedUsesPolicyProxy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "proxy123"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	rb := &recordingBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search?q=payload"}},
@@ -154,11 +140,7 @@ func TestXSSReflectedUsesPolicyProxy(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -171,14 +153,11 @@ func TestXSSReflectedUsesPolicyProxy(t *testing.T) {
 }
 
 func TestXSSReflectedVerified_ConsoleLog(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "console789"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search"}},
@@ -196,26 +175,19 @@ func TestXSSReflectedVerified_ConsoleLog(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
 }
 
 func TestXSSReflectedRejected_VerifierHookDialog(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "hook456"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search"}},
@@ -235,26 +207,19 @@ func TestXSSReflectedRejected_VerifierHookDialog(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (verifier hook)", result)
 	}
 }
 
 func TestXSSReflectedNotReproduced_WrongNonce(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "real_nonce"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search"}},
@@ -273,26 +238,19 @@ func TestXSSReflectedNotReproduced_WrongNonce(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (wrong nonce)", result)
 	}
 }
 
 func TestXSSReflectedNotReproduced_WrongOrigin(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "origintest"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search"}},
@@ -311,26 +269,19 @@ func TestXSSReflectedNotReproduced_WrongOrigin(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (wrong origin)", result)
 	}
 }
 
 func TestXSSReflectedNotReproduced_ExternalNav(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "navtest"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{
@@ -352,26 +303,19 @@ func TestXSSReflectedNotReproduced_ExternalNav(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (external nav)", result)
 	}
 }
 
 func TestXSSReflectedNotReproduced_NoSignals(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "nosig"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search"}},
@@ -385,26 +329,19 @@ func TestXSSReflectedNotReproduced_NoSignals(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (no signals)", result)
 	}
 }
 
 func TestXSSReflectedRejected_JavascriptScheme(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "jsscheme"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	// javascript: entrypoint is rejected.
 	ev, _ := json.Marshal(map[string]any{
@@ -448,22 +385,15 @@ func TestXSSReflectedRejected_JavascriptScheme(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.reflected", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected (javascript: scheme)", result)
 	}
 }
 
 func TestXSSReflectedInconclusive_BrowserError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "browserr"
@@ -489,14 +419,11 @@ func TestXSSReflectedInconclusive_BrowserError(t *testing.T) {
 }
 
 func TestXSSReflectedNotReproduced_ConsoleEmptySourceURL(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "emptysrc"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/search"}},
@@ -514,12 +441,8 @@ func TestXSSReflectedNotReproduced_ConsoleEmptySourceURL(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.reflected")
-	res, err := v.Validate(context.Background(), reflectedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.reflected", reflectedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (empty console source)", result)
 	}
@@ -529,7 +452,7 @@ func TestXSSReflectedNotReproduced_ConsoleEmptySourceURL(t *testing.T) {
 
 func storedJob(t *testing.T, port int, nonce string) validators.Job {
 	t.Helper()
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 	ev, _ := json.Marshal(map[string]any{
 		"setup": []map[string]any{{
 			"method": "POST",
@@ -587,7 +510,7 @@ func TestXSSStoredVerified(t *testing.T) {
 
 	ip, port := serverAddr(t, srv)
 	nonce := "stored123"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/users/me"}},
@@ -606,30 +529,19 @@ func TestXSSStoredVerified(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, ok := validators.Lookup("xss.stored")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-
-	res, err := v.Validate(context.Background(), storedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.stored", storedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
 }
 
 func TestXSSStoredNotReproduced_NoSignal(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "nosigstored"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/users/me"}},
@@ -643,12 +555,8 @@ func TestXSSStoredNotReproduced_NoSignal(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.stored")
-	res, err := v.Validate(context.Background(), storedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.stored", storedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
@@ -700,7 +608,7 @@ func TestXSSStoredVerified_WithCleanup(t *testing.T) {
 
 	ip, port := serverAddr(t, srv)
 	nonce := "cleanup456"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	// Job declares explicit cleanup.
 	ev, _ := json.Marshal(map[string]any{
@@ -766,12 +674,8 @@ func TestXSSStoredVerified_WithCleanup(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.stored")
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.stored", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -784,14 +688,11 @@ func TestXSSStoredVerified_WithCleanup(t *testing.T) {
 }
 
 func TestXSSStoredRejected_DataScheme(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "datascheme"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	ev, _ := json.Marshal(map[string]any{
 		"setup": []map[string]any{{
@@ -836,26 +737,19 @@ func TestXSSStoredRejected_DataScheme(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.stored")
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.stored", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected (data: trigger)", result)
 	}
 }
 
 func TestXSSStoredNotReproduced_VerifierHook(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	nonce := "hookstored"
-	origin := fmt.Sprintf("http://app.example.com:%d", port)
+	origin := appOrigin(port)
 
 	fb := &fakeBrowser{result: browser.BrowserResult{
 		Navigation: []browser.NavEvent{{Origin: origin, URL: origin + "/users/me"}},
@@ -875,12 +769,8 @@ func TestXSSStoredNotReproduced_VerifierHook(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	v, _ := validators.Lookup("xss.stored")
-	res, err := v.Validate(context.Background(), storedJob(t, port, nonce), env)
+	res := runValidate(t, "xss.stored", storedJob(t, port, nonce), env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (verifier hook)", result)
 	}

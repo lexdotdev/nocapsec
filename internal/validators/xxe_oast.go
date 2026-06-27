@@ -18,5 +18,3 @@ func (xxeOAST) Validate(ctx context.Context, job Job, env Env) (Result, error) {
 		DefaultWindow:      120 * time.Second,
 	})
 }
-
-func init() { Register(xxeOAST{}) }

@@ -121,5 +121,3 @@ type crlfProofBlock struct {
 	HeaderInCandidate     bool   `json:"header_in_candidate"`
 	HeaderAbsentInControl bool   `json:"header_absent_in_control"`
 }
-
-func init() { Register(crlfResponseSplitting{}) }

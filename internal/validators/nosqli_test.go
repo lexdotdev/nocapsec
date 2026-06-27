@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -85,14 +84,7 @@ func TestNoSQLiAuthBypassVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("nosqli.auth_bypass")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildNoSQLiJob(t, port, "Logged in as user"), nosqliEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "nosqli.auth_bypass", buildNoSQLiJob(t, port, "Logged in as user"), nosqliEnv(t, srv))
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -104,12 +96,8 @@ func TestNoSQLiAuthBypassReflectionGuard(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("nosqli.auth_bypass")
 	// "admin" is in the request body: bad marker.
-	res, err := v.Validate(context.Background(), buildNoSQLiJob(t, port, "admin"), nosqliEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "nosqli.auth_bypass", buildNoSQLiJob(t, port, "admin"), nosqliEnv(t, srv))
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (marker reflected in request)", res.Verdict)
 	}
@@ -124,11 +112,7 @@ func TestNoSQLiAuthBypassNotReproduced(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("nosqli.auth_bypass")
-	res, err := v.Validate(context.Background(), buildNoSQLiJob(t, port, "Logged in as user"), nosqliEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "nosqli.auth_bypass", buildNoSQLiJob(t, port, "Logged in as user"), nosqliEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", res.Verdict)
 	}
@@ -143,11 +127,7 @@ func TestNoSQLiAuthBypassControlAlsoSucceeds(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("nosqli.auth_bypass")
-	res, err := v.Validate(context.Background(), buildNoSQLiJob(t, port, "Logged in as user"), nosqliEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "nosqli.auth_bypass", buildNoSQLiJob(t, port, "Logged in as user"), nosqliEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (control also authenticates)", res.Verdict)
 	}

@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net"
 	"net/http"
@@ -76,10 +75,6 @@ func TestXXEOASTVerified(t *testing.T) {
 
 	ip, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, ok := validators.Lookup("xxe.oast")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 	job := buildXXEJob(t, port)
 
 	go func() {
@@ -108,11 +103,8 @@ func TestXXEOASTVerified(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xxe.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -133,14 +125,10 @@ func TestXXEOASTNotReproducedNoCallback(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("xxe.oast")
 
 	ps := strconv.Itoa(port)
 	base := "http://app.example.com:" + ps
@@ -189,18 +177,14 @@ func TestXXEOASTNotReproducedNoCallback(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xxe.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
 }
 
 func TestXXEOASTInvalidEvidence(t *testing.T) {
-	v, _ := validators.Lookup("xxe.oast")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-xxe-bad",
@@ -211,28 +195,21 @@ func TestXXEOASTInvalidEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xxe.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
 }
 
 func TestXXEOASTRejectedByPolicy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	pe := restrictiveEnforcer(t, ip, port, "evil.example.com")
 
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
-	v, _ := validators.Lookup("xxe.oast")
 	job := buildXXEJob(t, port)
 
 	env := validators.Env{
@@ -242,11 +219,8 @@ func TestXXEOASTRejectedByPolicy(t *testing.T) {
 		Clock:     clk,
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xxe.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected", result)
 	}
@@ -256,14 +230,10 @@ func TestXXEOASTNotReproducedVerifierOnly(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("xxe.oast")
 	job := buildXXEJob(t, port)
 
 	// Inject a verifier-browser callback only.
@@ -293,25 +263,18 @@ func TestXXEOASTNotReproducedVerifierOnly(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xxe.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (verifier-only)", result)
 	}
 }
 
 func TestXXEOASTNoBackend(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("xxe.oast")
 	job := buildXXEJob(t, port)
 
 	env := validators.Env{
@@ -321,11 +284,8 @@ func TestXXEOASTNoBackend(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xxe.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}
@@ -388,10 +348,6 @@ func TestCmdInjOASTVerified(t *testing.T) {
 
 	ip, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, ok := validators.Lookup("command_injection.oast")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 	job := buildCmdInjJob(t, port)
 
 	go func() {
@@ -420,11 +376,8 @@ func TestCmdInjOASTVerified(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -445,14 +398,10 @@ func TestCmdInjOASTNotReproducedNoCallback(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("command_injection.oast")
 	job := buildCmdInjJob(t, port)
 
 	go func() {
@@ -468,18 +417,14 @@ func TestCmdInjOASTNotReproducedNoCallback(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
 }
 
 func TestCmdInjOASTInvalidEvidence(t *testing.T) {
-	v, _ := validators.Lookup("command_injection.oast")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-cmdi-bad",
@@ -490,28 +435,21 @@ func TestCmdInjOASTInvalidEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
 }
 
 func TestCmdInjOASTRejectedByPolicy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	pe := restrictiveEnforcer(t, ip, port, "evil.example.com")
 
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
-	v, _ := validators.Lookup("command_injection.oast")
 	job := buildCmdInjJob(t, port)
 
 	env := validators.Env{
@@ -521,11 +459,8 @@ func TestCmdInjOASTRejectedByPolicy(t *testing.T) {
 		Clock:     clk,
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected", result)
 	}
@@ -535,14 +470,10 @@ func TestCmdInjOASTNotReproducedVerifierOnly(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("command_injection.oast")
 	job := buildCmdInjJob(t, port)
 
 	go func() {
@@ -571,11 +502,8 @@ func TestCmdInjOASTNotReproducedVerifierOnly(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.oast", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (verifier-only)", result)
 	}
@@ -639,7 +567,6 @@ func TestCmdInjOASTTokenBreakoutVerified(t *testing.T) {
 
 	ip, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("command_injection.oast")
 	job := buildCmdInjTokenJob(t, port)
 
 	go func() {
@@ -668,10 +595,7 @@ func TestCmdInjOASTTokenBreakoutVerified(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "command_injection.oast", job, env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -700,7 +624,6 @@ func TestCmdInjOASTTokenQueryHostVerified(t *testing.T) {
 
 	ip, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("command_injection.oast")
 
 	ps := strconv.Itoa(port)
 	base := "http://app.example.com:" + ps
@@ -738,10 +661,7 @@ func TestCmdInjOASTTokenQueryHostVerified(t *testing.T) {
 	}()
 
 	env := validators.Env{Policy: pe, OAST: fake, Artifacts: artifacts.NewStore(), Clock: clk, PollConfig: fastPollConfig()}
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "command_injection.oast", job, env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -796,17 +716,10 @@ func TestBlindXSSVerified(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, ok := validators.Lookup("xss.blind")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 	job := buildBlindXSSJob(t, port)
 
 	// Blind XSS accepts any callback.
@@ -836,11 +749,8 @@ func TestBlindXSSVerified(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.blind", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -851,14 +761,10 @@ func TestBlindXSSVerifiedNoAttribution(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("xss.blind")
 	job := buildBlindXSSJob(t, port)
 
 	// Unknown-source callback is valid.
@@ -888,11 +794,8 @@ func TestBlindXSSVerifiedNoAttribution(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.blind", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (no attribution needed for blind XSS)", result)
 	}
@@ -902,14 +805,10 @@ func TestBlindXSSNotReproducedExpired(t *testing.T) {
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("xss.blind")
 	job := buildBlindXSSJob(t, port)
 
 	go func() {
@@ -925,18 +824,14 @@ func TestBlindXSSNotReproducedExpired(t *testing.T) {
 		PollConfig: fastPollConfig(),
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.blind", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
 }
 
 func TestBlindXSSInvalidEvidence(t *testing.T) {
-	v, _ := validators.Lookup("xss.blind")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-bxss-bad",
@@ -947,28 +842,21 @@ func TestBlindXSSInvalidEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.blind", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
 }
 
 func TestBlindXSSRejectedByPolicy(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	ip, port := serverAddr(t, srv)
 	pe := restrictiveEnforcer(t, ip, port, "evil.example.com")
 
 	clk := newTestOASTClock(time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC))
 	fake := oast.NewFake(clk, "oast.test")
-	v, _ := validators.Lookup("xss.blind")
 	job := buildBlindXSSJob(t, port)
 
 	env := validators.Env{
@@ -978,25 +866,18 @@ func TestBlindXSSRejectedByPolicy(t *testing.T) {
 		Clock:     clk,
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.blind", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Rejected {
 		t.Fatalf("verdict = %q, want rejected", result)
 	}
 }
 
 func TestBlindXSSNoBackend(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	pe := ssrfEnforcer(t, srv)
-	v, _ := validators.Lookup("xss.blind")
 	job := buildBlindXSSJob(t, port)
 
 	env := validators.Env{
@@ -1006,11 +887,8 @@ func TestBlindXSSNoBackend(t *testing.T) {
 		Clock:     validators.WallClock{},
 	}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "xss.blind", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}

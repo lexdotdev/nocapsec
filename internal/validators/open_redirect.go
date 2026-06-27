@@ -264,5 +264,3 @@ type redirectProof struct {
 	RequireFinalExternalOrigin bool   `json:"require_final_external_origin"`
 	TimeoutMS                  int    `json:"timeout_ms"`
 }
-
-func init() { Register(openRedirect{}) }

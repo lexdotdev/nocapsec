@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -83,19 +82,11 @@ func TestSQLiBooleanVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("sqli.boolean_based")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-
 	job := buildBooleanJob(t, port)
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -110,15 +101,11 @@ func TestSQLiBooleanNotReproduced(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.boolean_based")
 	job := buildBooleanJob(t, port)
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
@@ -143,15 +130,11 @@ func TestSQLiBooleanTrueDiffersFromBaseline(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.boolean_based")
 	job := buildBooleanJob(t, port)
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (true differs from baseline)", result)
 	}
@@ -210,14 +193,10 @@ func TestSQLiBooleanStatusCodeDiff(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("sqli.boolean_based")
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -225,7 +204,6 @@ func TestSQLiBooleanStatusCodeDiff(t *testing.T) {
 
 // Bad evidence JSON -> invalid.
 func TestSQLiBooleanInvalidEvidence(t *testing.T) {
-	v, _ := validators.Lookup("sqli.boolean_based")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-invalid",
@@ -236,11 +214,8 @@ func TestSQLiBooleanInvalidEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
@@ -264,15 +239,11 @@ func TestSQLiBooleanDynamicContentMasked(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.boolean_based")
 	job := buildBooleanJob(t, port)
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (dynamic tokens masked)", result)
 	}
@@ -320,13 +291,9 @@ func TestSQLiBooleanInjectionLocationAbsent(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("sqli.boolean_based")
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (injection location absent from base_request)", res.Verdict)
 	}
@@ -382,13 +349,9 @@ func TestSQLiBooleanCompareFloor(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("sqli.boolean_based")
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (floor forces body_hash_fuzzy)", res.Verdict)
 	}
@@ -455,16 +418,9 @@ func TestSQLiBooleanHeaderSlotVerified(t *testing.T) {
 		Nonce: "header-nonce",
 	}
 
-	v, ok := validators.Lookup("sqli.boolean_based")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (header slot)", res.Verdict)
 	}
@@ -472,10 +428,7 @@ func TestSQLiBooleanHeaderSlotVerified(t *testing.T) {
 
 // CR/LF header value is rejected.
 func TestSQLiBooleanHeaderCRLFRejected(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
+	srv := okServer(t)
 
 	_, port := serverAddr(t, srv)
 	ps := strconv.Itoa(port)
@@ -519,16 +472,9 @@ func TestSQLiBooleanHeaderCRLFRejected(t *testing.T) {
 		},
 	}
 
-	v, ok := validators.Lookup("sqli.boolean_based")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 	env := booleanEnv(t, srv)
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.boolean_based", job, env)
 	// CR/LF payload is invalid.
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (CRLF in header payload)", res.Verdict)

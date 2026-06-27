@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -78,14 +77,8 @@ func TestPathTraversalVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("path_traversal.file_read")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildPathTraversalJob(t, port, ptCanary, "../../../../etc/passwd"), ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	job := buildPathTraversalJob(t, port, ptCanary, "../../../../etc/passwd")
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -97,13 +90,9 @@ func TestPathTraversalReflectionGuard(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("path_traversal.file_read")
 	// Candidate marker reaches the URL.
-	res, err := v.Validate(context.Background(),
-		buildPathTraversalJob(t, port, "NOCAPSEC_LEAK", "../../NOCAPSEC_LEAK"), ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	job := buildPathTraversalJob(t, port, "NOCAPSEC_LEAK", "../../NOCAPSEC_LEAK")
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (marker reflected in request)", res.Verdict)
 	}
@@ -119,15 +108,11 @@ func TestPathTraversalReflectionEncodedMarker(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("path_traversal.file_read")
 	// marker has chars the query encoder escapes.
 	const marker = "ZZ MARK/9:Q"
 	// marker smuggled into the candidate payload.
-	res, err := v.Validate(context.Background(),
-		buildPathTraversalJob(t, port, marker, "../../../../etc/passwd#"+marker), ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	job := buildPathTraversalJob(t, port, marker, "../../../../etc/passwd#"+marker)
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict == verdict.Verified {
 		t.Fatalf("verdict = verified: encoded-marker reflection cheat NOT blocked")
 	}
@@ -142,13 +127,9 @@ func TestPathTraversalReflectionDoubleEncoded(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("path_traversal.file_read")
 	// "../%2552OOT" -> "../%52OOT" -> "../ROOT".
-	res, err := v.Validate(context.Background(),
-		buildPathTraversalJob(t, port, "ROOT", "../%2552OOT"), ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	job := buildPathTraversalJob(t, port, "ROOT", "../%2552OOT")
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (double-encoded marker reflected)", res.Verdict)
 	}
@@ -162,11 +143,8 @@ func TestPathTraversalNotReproduced(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("path_traversal.file_read")
-	res, err := v.Validate(context.Background(), buildPathTraversalJob(t, port, ptCanary, "../../../../etc/passwd"), ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	job := buildPathTraversalJob(t, port, ptCanary, "../../../../etc/passwd")
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", res.Verdict)
 	}
@@ -180,11 +158,8 @@ func TestPathTraversalControlAlsoLeaks(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("path_traversal.file_read")
-	res, err := v.Validate(context.Background(), buildPathTraversalJob(t, port, ptCanary, "../../../../etc/passwd"), ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	job := buildPathTraversalJob(t, port, ptCanary, "../../../../etc/passwd")
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (control also leaks)", res.Verdict)
 	}
@@ -230,11 +205,7 @@ func TestPathTraversalURLTokenVerified(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("path_traversal.file_read")
-	res, err := v.Validate(context.Background(), job, ptEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "path_traversal.file_read", job, ptEnv(t, srv))
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (url_token path segment)", res.Verdict)
 	}
@@ -264,11 +235,7 @@ func TestPathTraversalURLTokenAbsent(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("path_traversal.file_read")
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "path_traversal.file_read", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (url token absent from base_request)", res.Verdict)
 	}

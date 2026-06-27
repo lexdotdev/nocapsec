@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -85,14 +84,7 @@ func TestSQLiInbandVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("sqli.inband")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildInbandJob(t, port), inbandEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.inband", buildInbandJob(t, port), inbandEnv(t, srv))
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -108,11 +100,7 @@ func TestSQLiInbandNotReproduced(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.inband")
-	res, err := v.Validate(context.Background(), buildInbandJob(t, port), inbandEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.inband", buildInbandJob(t, port), inbandEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", res.Verdict)
 	}
@@ -128,11 +116,7 @@ func TestSQLiInbandReflectionDoesNotPass(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.inband")
-	res, err := v.Validate(context.Background(), buildInbandJob(t, port), inbandEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.inband", buildInbandJob(t, port), inbandEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (reflection is not proof)", res.Verdict)
 	}
@@ -160,11 +144,7 @@ func TestSQLiInbandPresentInControlRejected(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.inband")
-	res, err := v.Validate(context.Background(), buildInbandJob(t, port), inbandEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.inband", buildInbandJob(t, port), inbandEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (marker present in control)", res.Verdict)
 	}
@@ -172,7 +152,6 @@ func TestSQLiInbandPresentInControlRejected(t *testing.T) {
 
 // Missing sqli_marker is invalid.
 func TestSQLiInbandMissingMarkerInvalid(t *testing.T) {
-	v, _ := validators.Lookup("sqli.inband")
 	ev, _ := json.Marshal(map[string]any{
 		"base_request": map[string]string{"method": "GET", "url": "http://app.example.com/products/search?q=1"},
 		"injection": map[string]any{
@@ -186,10 +165,7 @@ func TestSQLiInbandMissingMarkerInvalid(t *testing.T) {
 		"repetitions":                       2,
 	})
 	job := validators.Job{Finding: evidence.Finding{FindingID: "t", Type: "sqli.inband", Evidence: ev, Proof: proof}}
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.inband", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", res.Verdict)
 	}

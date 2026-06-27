@@ -172,5 +172,3 @@ func validStoredSSTIRequests(ev sstiStoredEvidence) bool {
 	}
 	return true
 }
-
-func init() { Register(sstiStored{}) }

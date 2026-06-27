@@ -3,6 +3,7 @@ package validators
 import (
 	"crypto/sha256"
 	"fmt"
+	"maps"
 	"regexp"
 	"slices"
 	"strings"
@@ -70,22 +71,11 @@ func dimensionEqual(a, b ResponseFingerprint, d DiffDimension) bool {
 	case DimContentLengthBucket:
 		return a.ContentLenBucket == b.ContentLenBucket
 	case DimSemanticMarkers:
-		return markerSetsEqual(a.SemanticMarkerSet, b.SemanticMarkerSet)
+		// Marker values are always true.
+		return maps.Equal(a.SemanticMarkerSet, b.SemanticMarkerSet)
 	default:
 		return true
 	}
-}
-
-func markerSetsEqual(a, b map[string]bool) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for k := range a {
-		if !b[k] {
-			return false
-		}
-	}
-	return true
 }
 
 // ParseDimensions maps wire strings to dimensions.

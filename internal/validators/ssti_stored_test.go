@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -110,14 +109,7 @@ func runStoredSSTI(t *testing.T, h http.Handler) verdict.Verdict {
 	srv := httptest.NewServer(h)
 	defer srv.Close()
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("ssti.stored")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildStoredSSTIJob(t, port), storedSSTIEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "ssti.stored", buildStoredSSTIJob(t, port), storedSSTIEnv(t, srv))
 	return res.Verdict
 }
 
@@ -140,7 +132,6 @@ func TestSSTIStoredSetupFailureInconclusive(t *testing.T) {
 }
 
 func TestSSTIStoredMissingMarkerInvalid(t *testing.T) {
-	v, _ := validators.Lookup("ssti.stored")
 	ev, _ := json.Marshal(map[string]any{
 		"setup_request": map[string]any{
 			"method": "POST", "url": "http://app.example.com/admin/product", "body": "email_template=placeholder",
@@ -158,10 +149,7 @@ func TestSSTIStoredMissingMarkerInvalid(t *testing.T) {
 		"repetitions":                       2,
 	})
 	job := validators.Job{Finding: evidence.Finding{FindingID: "t", Type: "ssti.stored", Evidence: ev, Proof: proof}}
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "ssti.stored", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", res.Verdict)
 	}

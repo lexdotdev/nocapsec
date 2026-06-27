@@ -167,19 +167,12 @@ func TestSQLiTimingVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("sqli.time_based")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 
 	job := timingJob(t, port, "sqli.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -191,19 +184,12 @@ func TestCommandInjectionTimingVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("command_injection.time_based")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
 
 	job := timingJob(t, port, "command_injection.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", result)
 	}
@@ -216,16 +202,12 @@ func TestTimingNotReproduced(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.time_based")
 
 	job := timingJob(t, port, "sqli.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced", result)
 	}
@@ -244,16 +226,12 @@ func TestTimingUnstableControl(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.time_based")
 
 	job := timingJob(t, port, "sqli.time_based")
 	env := timingEnv(t, srv, unstable)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}
@@ -275,16 +253,12 @@ func TestTimingStatusCodeMismatch(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.time_based")
 
 	job := timingJob(t, port, "sqli.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive", result)
 	}
@@ -292,7 +266,6 @@ func TestTimingStatusCodeMismatch(t *testing.T) {
 
 // Bad evidence JSON -> invalid.
 func TestTimingInvalidEvidence(t *testing.T) {
-	v, _ := validators.Lookup("sqli.time_based")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-bad",
@@ -303,11 +276,8 @@ func TestTimingInvalidEvidence(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
@@ -315,7 +285,6 @@ func TestTimingInvalidEvidence(t *testing.T) {
 
 // Malformed JSON -> invalid.
 func TestTimingMalformedJSON(t *testing.T) {
-	v, _ := validators.Lookup("command_injection.time_based")
 	job := validators.Job{
 		Finding: evidence.Finding{
 			FindingID: "test-malformed",
@@ -326,11 +295,8 @@ func TestTimingMalformedJSON(t *testing.T) {
 	}
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "command_injection.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", result)
 	}
@@ -352,16 +318,12 @@ func TestTimingBodyDissimilar(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("sqli.time_based")
 
 	job := timingJob(t, port, "sqli.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Inconclusive {
 		t.Fatalf("verdict = %q, want inconclusive (body dissimilar)", result)
 	}
@@ -409,14 +371,10 @@ func TestTimingCustomProof(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("sqli.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
+	res := runValidate(t, "sqli.time_based", job, env)
 	result := res.Verdict
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
 	if result != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified (custom raised threshold)", result)
 	}
@@ -466,13 +424,9 @@ func TestTimingThresholdFloorEnforced(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("sqli.time_based")
 	env := timingEnv(t, srv, clock)
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.time_based", job, env)
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (sub-floor delta rejected by engine floor)", res.Verdict)
 	}
@@ -508,13 +462,9 @@ func TestTimingInjectionLocationAbsent(t *testing.T) {
 		},
 	}
 
-	v, _ := validators.Lookup("sqli.time_based")
 	env := validators.Env{Clock: validators.WallClock{}}
 
-	res, err := v.Validate(context.Background(), job, env)
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "sqli.time_based", job, env)
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid (injection location absent from base_request)", res.Verdict)
 	}

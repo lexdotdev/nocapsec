@@ -1,7 +1,6 @@
 package validators_test
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -82,14 +81,7 @@ func TestSSTIReflectedVerified(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, ok := validators.Lookup("ssti.reflected")
-	if !ok {
-		t.Fatal("validator not registered")
-	}
-	res, err := v.Validate(context.Background(), buildSSTIJob(t, port), sstiEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "ssti.reflected", buildSSTIJob(t, port), sstiEnv(t, srv))
 	if res.Verdict != verdict.Verified {
 		t.Fatalf("verdict = %q, want verified", res.Verdict)
 	}
@@ -104,11 +96,7 @@ func TestSSTIReflectedReflectionDoesNotPass(t *testing.T) {
 	defer srv.Close()
 
 	_, port := serverAddr(t, srv)
-	v, _ := validators.Lookup("ssti.reflected")
-	res, err := v.Validate(context.Background(), buildSSTIJob(t, port), sstiEnv(t, srv))
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "ssti.reflected", buildSSTIJob(t, port), sstiEnv(t, srv))
 	if res.Verdict != verdict.NotReproduced {
 		t.Fatalf("verdict = %q, want not_reproduced (reflection is not proof)", res.Verdict)
 	}
@@ -116,7 +104,6 @@ func TestSSTIReflectedReflectionDoesNotPass(t *testing.T) {
 
 // missing {{ssti_marker}} slot -> invalid.
 func TestSSTIReflectedMissingMarkerInvalid(t *testing.T) {
-	v, _ := validators.Lookup("ssti.reflected")
 	ev, _ := json.Marshal(map[string]any{
 		"base_request": map[string]string{"method": "GET", "url": "http://app.example.com/?name=guest"},
 		"injection": map[string]any{
@@ -130,10 +117,7 @@ func TestSSTIReflectedMissingMarkerInvalid(t *testing.T) {
 		"repetitions":                       2,
 	})
 	job := validators.Job{Finding: evidence.Finding{FindingID: "t", Type: "ssti.reflected", Evidence: ev, Proof: proof}}
-	res, err := v.Validate(context.Background(), job, validators.Env{Clock: validators.WallClock{}})
-	if err != nil {
-		t.Fatalf("Validate: %v", err)
-	}
+	res := runValidate(t, "ssti.reflected", job, validators.Env{Clock: validators.WallClock{}})
 	if res.Verdict != verdict.Invalid {
 		t.Fatalf("verdict = %q, want invalid", res.Verdict)
 	}
